@@ -74,6 +74,7 @@ in
               RemainAfterExit = true;
             };
             script = ''
+              set -euo pipefail
               mkdir -p /btrfs_tmp
               mount -t btrfs /dev/disk/by-label/nixos /btrfs_tmp
 
@@ -164,10 +165,13 @@ in
             };
             path = [ pkgs.coreutils ];
             script = ''
-              set -eu
+              set -euo pipefail
               CONF=/persist/etc/net/static.conf
-              # shellcheck source=/dev/null
-              . "$CONF"
+              # Read fields individually — never source the file as shell.
+              ADDRESS=$(grep -m1 '^ADDRESS=' "$CONF" | cut -d= -f2- | tr -d '"' || true)
+              GATEWAY=$(grep -m1 '^GATEWAY=' "$CONF" | cut -d= -f2- | tr -d '"' || true)
+              DNS=$(grep -m1 '^DNS=' "$CONF" | cut -d= -f2- | tr -d '"' || true)
+              IFACE=$(grep -m1 '^IFACE=' "$CONF" | cut -d= -f2- | tr -d '"' || true)
               [ -n "''${ADDRESS:-}" ] || exit 0
               mkdir -p /run/systemd/network
               {
