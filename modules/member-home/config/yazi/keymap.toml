@@ -1,0 +1,403 @@
+# Minimal keymap configuration
+[mgr]
+keymap = [
+    # Basic navigation
+    { on = [
+        "<Esc>",
+    ], run = "escape", desc = "Exit visual mode, clear selected, or cancel search" },
+    { on = [
+        "q",
+    ], run = "quit", desc = "Exit the process" },
+
+    # Movement
+    { on = [
+        "k",
+    ], run = "arrow -1", desc = "Move cursor up" },
+    { on = [
+        "j",
+    ], run = "arrow 1", desc = "Move cursor down" },
+    { on = [
+        "h",
+    ], run = "leave", desc = "Go back to the parent directory" },
+    { on = [
+        "l",
+    ], run = "enter", desc = "Enter the child directory" },
+
+    # File operations — smart-enter plugin: enter dirs, open files.
+    # Prevents yazi.nvim recursion (open on dir → chooser → reopen loop).
+    { on = [
+        "<Enter>",
+    ], run = "plugin smart-enter", desc = "Enter dir / open file" },
+    { on = [
+        "o",
+    ], run = "open", desc = "Open (force, incl. dirs)" },
+    { on = [
+        "e",
+    ], run = "plugin smart-enter", desc = "Open file (same as Enter)" },
+    { on = [
+        "E",
+    ], run = "open --hovered --interactive", desc = "Open interactively" },
+    { on = [
+        "y",
+    ], run = "yank", desc = "Copy the selected files" },
+    { on = [
+        "x",
+    ], run = "yank --cut", desc = "Cut the selected files" },
+    { on = [
+        "p",
+    ], run = "paste", desc = "Paste the files" },
+    { on = [
+        "d",
+    ], run = "remove", desc = "Move the files to the trash" },
+    { on = [
+        "D",
+    ], run = "remove --permanently", desc = "Permanently delete the files" },
+    { on = [
+        "a",
+    ], run = "create", desc = "Create a file or directory" },
+    { on = [
+        "r",
+    ], run = "rename", desc = "Rename a file or directory" },
+
+    # Selection
+    { on = [
+        "<Space>",
+    ], run = [
+        "toggle",
+        "arrow 1",
+    ], desc = "Toggle the current selection state" },
+    { on = [
+        "v",
+    ], run = "visual_mode", desc = "Enter visual mode (selection mode)" },
+    { on = [
+        "V",
+    ], run = "visual_mode --unset", desc = "Enter visual mode (unset mode)" },
+    { on = [
+        "u",
+    ], run = "unyank", desc = "Cancel yank/cut" },
+
+    # Search and filter
+    { on = [
+        "/",
+    ], run = "find --smart", desc = "Find files" },
+    { on = [
+        "n",
+    ], run = "find_arrow", desc = "Go to next found" },
+    { on = [
+        "N",
+    ], run = "find_arrow --previous", desc = "Go to previous found" },
+    { on = [
+        "f",
+    ], run = "filter --smart", desc = "Filter files" },
+    { on = [
+        "F",
+    ], run = "plugin smart-filter", desc = "Smart filter" },
+    { on = [
+        "s",
+        "n",
+    ], run = "sort natural", desc = "Sort by name (default)" },
+    { on = [
+        "s",
+        "s",
+    ], run = ["sort size --reverse=yes", "linemode size"], desc = "Sort by size" },
+    { on = [
+        "s",
+        "m",
+    ], run = ["sort mtime --reverse=yes", "linemode mtime"], desc = "Sort by modified time" },
+    { on = [
+        "s",
+        "b",
+    ], run = ["sort btime --reverse=yes", "linemode btime"], desc = "Sort by birth time" },
+    { on = [
+        "s",
+        "e",
+    ], run = "sort extension", desc = "Sort by extension" },
+    { on = [
+        "s",
+        "c",
+    ], run = 'shell "ls -ltc | less" --block --confirm', desc = "List by ctime (status change)" },
+
+    # View
+    { on = [
+        "<Tab>",
+    ], run = "plugin layout-cycle", desc = "Cycle layout: responsive → preview → list" },
+    { on = [
+        ".",
+    ], run = "hidden toggle", desc = "Toggle the visibility of hidden files" },
+    { on = [
+        "w",
+    ], run = "tasks:show", desc = "Show task manager" },
+    { on = [
+        "?",
+    ], run = "help", desc = "Open help" },
+
+    # Quick navigation
+    { on = [
+        "<C-u>",
+    ], run = "arrow -50%", desc = "Half page up" },
+    { on = [
+        "<C-d>",
+    ], run = "arrow 50%", desc = "Half page down" },
+    { on = [
+        "<C-n>",
+    ], run = "seek 5", desc = "Scroll preview down" },
+    { on = [
+        "<C-p>",
+    ], run = "seek -5", desc = "Scroll preview up" },
+    { on = [
+        "<Backspace>",
+    ], run = "back", desc = "Go back to previous directory" },
+
+    # Symlinks (yank with y, navigate to target, then link)
+    { on = [
+        "-",
+    ], run = "link", desc = "Symlink (absolute)" },
+    { on = [
+        "_",
+    ], run = "link --relative", desc = "Symlink (relative)" },
+
+    # Shell
+    { on = [
+        "S",
+    ], run = "plugin what-size", desc = "Calculate directory sizes" },
+    { on = [
+        "!",
+    ], run = "shell \"$SHELL\" --block --confirm", desc = "Open shell here" },
+    { on = [
+        "R",
+    ], run = "mgr:refresh", desc = "Refresh file list" },
+
+    # Copy paths
+    { on = [
+        "c",
+        "c",
+    ], run = "copy path", desc = "Copy absolute path" },
+    { on = [
+        "c",
+        "d",
+    ], run = "copy dirname", desc = "Copy directory path" },
+    { on = [
+        "c",
+        "f",
+    ], run = "copy filename", desc = "Copy filename" },
+    { on = [
+        "c",
+        "n",
+    ], run = "copy name_without_ext", desc = "Copy filename without extension" },
+
+    # Tabs
+    { on = [
+        "t",
+    ], run = "tab_create --current", desc = "Create a new tab" },
+    { on = [
+        "[",
+    ], run = "tab_switch -1 --relative", desc = "Switch to previous tab" },
+    { on = [
+        "]",
+    ], run = "tab_switch 1 --relative", desc = "Switch to next tab" },
+    { on = [
+        "{",
+    ], run = "tab_swap -1", desc = "Swap current tab with previous" },
+    { on = [
+        "}",
+    ], run = "tab_swap 1", desc = "Swap current tab with next" },
+
+    # Jumping
+    { on = [
+        "g",
+        "g",
+    ], run = "arrow -99999999", desc = "Move cursor to the top" },
+    { on = [
+        "G",
+    ], run = "arrow 99999999", desc = "Move cursor to the bottom" },
+    { on = [
+        "~",
+    ], run = "cd ~", desc = "Go to home directory" },
+    { on = [
+        "z",
+    ], run = "plugin zoxide", desc = "Jump with zoxide" },
+    { on = [
+        "Z",
+    ], run = "plugin zoxide --args=interactive", desc = "Jump with zoxide (interactive)" },
+]
+
+[[mgr.prepend_keymap]]
+on = "!"
+for = "unix"
+run = 'shell "$SHELL" --block'
+desc = "Open $SHELL here"
+
+[[mgr.prepend_keymap]]
+on = ["g", "i"]
+run = "plugin lazygit"
+desc = "run lazygit"
+
+# DuckDB keybindings
+[[mgr.prepend_keymap]]
+on = "H"
+run = "plugin duckdb -1"
+desc = "Scroll one column to the left"
+
+[[mgr.prepend_keymap]]
+on = "L"
+run = "plugin duckdb +1"
+desc = "Scroll one column to the right"
+
+[[mgr.prepend_keymap]]
+on = ["g", "o"]
+run = "plugin duckdb -open"
+desc = "Open with duckdb"
+
+[[mgr.prepend_keymap]]
+on = ["g", "u"]
+run = "plugin duckdb -ui"
+desc = "Open with duckdb ui"
+
+# fg: find files/content recursively (fd+fzf / rg+fzf)
+[[mgr.prepend_keymap]]
+on = ["f", "f"]
+run = "plugin fg -- fzf"
+desc = "Find file by filename"
+
+[[mgr.prepend_keymap]]
+on = ["f", "g"]
+run = "plugin fg"
+desc = "find file by content (fuzzy match)"
+
+# Run current file
+[[mgr.prepend_keymap]]
+on = "X"
+run = 'shell "$0; echo; echo [Done] Press enter to continue.; read" --block --confirm'
+desc = "Run current file"
+
+# Copy file path to system pasteboard
+[[mgr.prepend_keymap]]
+on = ["c", "p"]
+# yank.sh handles pbcopy / xclip / xsel / OSC52 — works on mac, Linux, and over SSH.
+run = 'shell "cat \"$0\" | \"$HOME/.config/tmux/yank.sh\"" --confirm'
+desc = "Copy file content to pasteboard"
+
+# Copy path relative to project root (farthest git ancestor)
+[[mgr.prepend_keymap]]
+on = ["c", "C"]
+run = "plugin copy-git-path"
+desc = "Copy path relative to project root (farthest git)"
+
+# cd back to the root of the current Git repository (farthest ancestor)
+[[mgr.prepend_keymap]]
+on = ["g", "r"]
+run = "plugin git-root"
+desc = "cd to project root (farthest git)"
+
+[[mgr.prepend_keymap]]
+on = ["g", "l"]
+run = 'shell "lnav \"$@\"" --block --confirm'
+desc = "Open with lnav"
+
+[[mgr.prepend_keymap]]
+on = ["c", "m"]
+run = "plugin chmod"
+desc = "Chmod on selected files"
+
+[[mgr.prepend_keymap]]
+on = ["g", "d"]
+run = 'shell "if [ $# -eq 2 ]; then diff -u \"$1\" \"$2\" | delta --paging=always; else echo Select exactly 2 files; read; fi" --block --confirm'
+desc = "Diff two selected files (delta)"
+
+[[mgr.prepend_keymap]]
+on = ["g", "D"]
+run = 'shell "if [ $# -eq 2 ]; then nvim -d \"$1\" \"$2\"; else nvim +DiffviewOpen; fi" --block --confirm'
+desc = "Diff selected files (nvim -d) or git diff (diffview)"
+
+[tasks]
+keymap = [
+    { on = [
+        "<Esc>",
+    ], run = "close", desc = "Hide the task manager" },
+    { on = [
+        "q",
+    ], run = "close", desc = "Hide the task manager" },
+    { on = [
+        "k",
+    ], run = "arrow -1", desc = "Move cursor up" },
+    { on = [
+        "j",
+    ], run = "arrow 1", desc = "Move cursor down" },
+]
+
+[select]
+keymap = [
+    { on = [
+        "<Esc>",
+    ], run = "close", desc = "Cancel selection" },
+    { on = [
+        "<Enter>",
+    ], run = "close --submit", desc = "Submit the selection" },
+    { on = [
+        "k",
+    ], run = "arrow -1", desc = "Move cursor up" },
+    { on = [
+        "j",
+    ], run = "arrow 1", desc = "Move cursor down" },
+]
+
+[input]
+keymap = [
+    { on = [
+        "<Esc>",
+    ], run = "close", desc = "Cancel input" },
+    { on = [
+        "<Enter>",
+    ], run = "close --submit", desc = "Submit the input" },
+
+    # Text editing
+    { on = [
+        "<Backspace>",
+    ], run = "backspace", desc = "Delete character before cursor" },
+    { on = [
+        "<Delete>",
+    ], run = "delete --cut", desc = "Delete character after cursor" },
+    { on = [
+        "<Left>",
+    ], run = "move -1", desc = "Move cursor left" },
+    { on = [
+        "<Right>",
+    ], run = "move 1", desc = "Move cursor right" },
+    { on = [
+        "<Home>",
+    ], run = "move -999", desc = "Move to start of line" },
+    { on = [
+        "<End>",
+    ], run = "move 999", desc = "Move to end of line" },
+    { on = [
+        "<C-a>",
+    ], run = "move -999", desc = "Move to start of line" },
+    { on = [
+        "<C-e>",
+    ], run = "move 999", desc = "Move to end of line" },
+    { on = [
+        "<C-w>",
+    ], run = "backspace --cut", desc = "Delete word before cursor" },
+    { on = [
+        "<C-u>",
+    ], run = "kill bol", desc = "Delete to start of line" },
+    { on = [
+        "<C-k>",
+    ], run = "kill eol", desc = "Delete to end of line" },
+]
+
+[help]
+keymap = [
+    { on = [
+        "<Esc>",
+    ], run = "escape", desc = "Clear the filter, or hide the help" },
+    { on = [
+        "q",
+    ], run = "close", desc = "Hide the help" },
+    { on = [
+        "k",
+    ], run = "arrow -1", desc = "Move cursor up" },
+    { on = [
+        "j",
+    ], run = "arrow 1", desc = "Move cursor down" },
+]

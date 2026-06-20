@@ -1,0 +1,153 @@
+# Minimal yazi configuration
+[mgr]
+ratio = [2, 4, 6]
+sort_by = "natural"
+sort_dir_first = true
+# Custom linemode (init.lua + plugins/count.yazi): dirs show immediate child
+# count (async, off-thread), files show size. Async so it can't freeze the list.
+linemode = "count"
+show_hidden = true
+scrolloff = 5
+
+[preview]
+tab_size = 2
+max_width = 1200
+max_height = 1800
+
+[opener]
+edit = [{ run = '$EDITOR "$@"', block = true }]
+# Per-OS: `open` is macOS-only. Linux hosts are headless servers
+# (home/linux/server-files.nix) — no GUI/xdg, so fall back to $EDITOR.
+# A bare `open` on Linux hangs as an unfinished task (no such binary).
+open = [
+  { run = 'open "$@"', for = "macos" },
+  { run = '$EDITOR "$@"', block = true, for = "linux" },
+]
+log = [{ run = 'lnav "$@"', block = true }]
+# macOS-only: headless Linux has no mpv/display — video/audio rules fall
+# through to the next opener instead of erroring.
+play = [{ run = 'mpv "$@"', block = true, desc = "Play with mpv", for = "macos" }]
+
+[open]
+rules = [
+  { url = "*.html", use = [
+    "open",
+  ] },
+  { url = "*.log", use = [
+    "log",
+    "edit",
+  ] },
+  { url = "*.log.*", use = [
+    "log",
+    "edit",
+  ] },
+  { url = "*/", use = [
+    "open",
+    "edit",
+  ] },
+  { mime = "video/*", use = [
+    "play",
+    "open",
+  ] },
+  { mime = "audio/*", use = [
+    "play",
+    "open",
+  ] },
+  { mime = "text/*", use = [
+    "edit",
+  ] },
+  { url = "*.py", use = [
+    "edit",
+  ] },
+  { url = "*.ts", use = [
+    "edit",
+  ] },
+  { url = "*.tsx", use = [
+    "edit",
+  ] },
+  { url = "*.js", use = [
+    "edit",
+  ] },
+  { url = "*.jsx", use = [
+    "edit",
+  ] },
+  { url = "*.mjs", use = [
+    "edit",
+  ] },
+  { url = "*.cjs", use = [
+    "edit",
+  ] },
+  { url = "*.go", use = [
+    "edit",
+  ] },
+  { url = "*.rs", use = [
+    "edit",
+  ] },
+  { url = "*.sh", use = [
+    "edit",
+  ] },
+  { url = "*.nix", use = [
+    "edit",
+  ] },
+  { url = "*.yaml", use = [
+    "edit",
+  ] },
+  { url = "*.yml", use = [
+    "edit",
+  ] },
+  { url = "*.lua", use = [
+    "edit",
+  ] },
+  { url = "*.json", use = [
+    "edit",
+  ] },
+  { url = "*", use = [
+    "open",
+  ] },
+]
+
+[plugin]
+prepend_previewers = [
+  # Media: multi-frame grid for video, waveform/art for audio
+  { mime = "video/*", run = "video-montage" },
+  { mime = "audio/*", run = "audio-preview" },
+  # Data
+  { url = "*.csv", run = "duckdb" },
+  { url = "*.tsv", run = "duckdb" },
+  { url = "*.parquet", run = "duckdb" },
+  { url = "*.txt", run = 'piper -- bat -f -p --theme=Coldark-Dark --wrap=character --terminal-width=$w "$1"' },
+  { url = "*.xlsx", run = "duckdb" },
+  { url = "*.db", run = "duckdb" },
+  { url = "*.duckdb", run = "duckdb" },
+  { mime = "application/x-parquet", run = "duckdb" },
+  { url = "*.md", run = 'piper -- mdcat --columns=$w "$1"' },
+  { url = "*.log", run = 'piper -- tspin "$1"' },
+  { url = "*.log.*", run = 'piper -- tspin "$1"' },
+]
+
+prepend_preloaders = [
+  # Media: build the montage/waveform ahead of hover so peek displays instantly.
+  # peek also generates inline as a fallback, so this is an optimization, not a requirement.
+  { mime = "video/*", run = "video-montage", multi = false },
+  { mime = "audio/*", run = "audio-preview", multi = false },
+  { url = "*.csv", run = "duckdb", multi = false },
+  { url = "*.tsv", run = "duckdb", multi = false },
+  { url = "*.parquet", run = "duckdb", multi = false },
+  { url = "*.xlsx", run = "duckdb", multi = false },
+]
+
+[[plugin.prepend_fetchers]]
+id = "git"
+url = "*"
+run = "git"
+
+[[plugin.prepend_fetchers]]
+id = "git"
+url = "*/"
+run = "git"
+
+# Async immediate-child counter feeding the "count" linemode (directories only).
+[[plugin.prepend_fetchers]]
+id = "count"
+url = "*/"
+run = "count"

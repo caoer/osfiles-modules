@@ -90,6 +90,10 @@
               self.nixosModules.external-persist
             ];
           };
+
+        # System-level baseline for semi-managed dev boxes (nix, sshd,
+        # fail2ban, nftables, CLI tools, docker). All mkDefault.
+        member-base = import ./modules/member-base.nix;
       };
 
       # Foreign (non-NixOS, system-manager) agent profile system layer.
@@ -103,6 +107,14 @@
       homeModules = {
         agentHome = import ./modules/agent/hm.nix;
         default = self.homeModules.agentHome;
+      };
+
+      # HM profile for semi-managed dev boxes: git, aliases, neovim, tmux,
+      # yazi, atuin, starship, zoxide, btop, direnv, eza, glow, lazygit,
+      # dev toolchains. All config files bundled.
+      homeManagerModules = {
+        member-home = import ./modules/member-home;
+        default = self.homeManagerModules.member-home;
       };
 
       # Re-exported packages: paseo (central pin), codex (ahead of nixpkgs),

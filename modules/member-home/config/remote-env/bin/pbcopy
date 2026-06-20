@@ -1,0 +1,24 @@
+#!/usr/bin/env zsh
+# OSC 52 clipboard copy for remote sessions
+# Works through SSH + tmux to copy to Mac clipboard
+# Must send to OUTER_TTY for nested tmux/popup to work
+
+local input
+if [[ -p /dev/stdin ]]; then
+  input=$(cat)
+else
+  input="$*"
+fi
+
+# Get current client TTY (display-message resolves to the correct client)
+local tty="${OUTER_TTY:-$(tmux display-message -p '#{client_tty}' 2>/dev/null)}"
+
+if [[ -z "$tty" ]]; then
+  # Fallback to stdout if no outer tmux found
+  local b64=$(printf "%s" "$input" | base64 -w0 2>/dev/null || printf "%s" "$input" | base64 | tr -d '\n')
+  printf "\033]52;c;%s\a" "$b64"
+else
+  # Send OSC 52 to outer tmux TTY (works in popups/nested tmux)
+  local b64=$(printf "%s" "$input" | base64 -w0 2>/dev/null || printf "%s" "$input" | base64 | tr -d '\n')
+  printf "\033]52;c;%s\007" "$b64" > "$tty"
+fi

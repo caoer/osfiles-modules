@@ -1,0 +1,297 @@
+# A TOML linter such as https://taplo.tamasfe.dev/ can use this schema to validate your config.
+# If you encounter any issues, please make an issue at https://github.com/sxyazi/yazi/issues
+
+[flavor]
+dark = "tokyo-night"
+
+# : Manager {{{
+
+[mgr]
+cwd = { fg = "#94e2d5" }
+
+# Hovered
+hovered         = { fg = "#1e1e2e", bg = "#89b4fa" }
+preview_hovered = { underline = true }
+
+# Find
+find_keyword  = { fg = "#f9e2af", italic = true }
+find_position = { fg = "#f38ba8", bg = "reset", italic = true }
+
+# Marker
+marker_selected = { fg = "#a6e3a1", bg = "#a6e3a1" }
+marker_copied   = { fg = "#f9e2af", bg = "#f9e2af" }
+marker_cut      = { fg = "#f38ba8", bg = "#f38ba8" }
+
+# Tab
+tab_active   = { fg = "#1e1e2e", bg = "#cdd6f4" }
+tab_inactive = { fg = "#cdd6f4", bg = "#45475a" }
+tab_width    = 1
+
+# Border
+border_symbol = "│"
+border_style  = { fg = "#6c7086" }
+
+# Highlighting
+syntect_theme = ""
+
+# : }}}
+
+
+# : Status {{{
+
+[status]
+separator_open  = ""
+separator_close = ""
+separator_style = { fg = "#45475a", bg = "#45475a" }
+
+# Mode
+mode_normal = { fg = "#1e1e2e", bg = "#89b4fa", bold = true }
+mode_select = { fg = "#1e1e2e", bg = "#a6e3a1", bold = true }
+mode_unset  = { fg = "#1e1e2e", bg = "#f2cdcd", bold = true }
+
+# Progress
+progress_label  = { fg = "#ffffff", bold = true }
+progress_normal = { fg = "#89b4fa", bg = "#45475a" }
+progress_error  = { fg = "#f38ba8", bg = "#45475a" }
+
+# Permissions
+permissions_t = { fg = "#a6e3a1" }
+permissions_r = { fg = "#f9e2af" }
+permissions_w = { fg = "#f38ba8" }
+permissions_x = { fg = "#94e2d5" }
+permissions_s = { fg = "#6c7086" }
+
+# : }}}
+
+
+# : Input {{{
+
+[input]
+border   = { fg = "#89b4fa" }
+title    = {}
+value    = {}
+selected = { reversed = true }
+
+# : }}}
+
+
+# : Select {{{
+
+[select]
+border   = { fg = "#89b4fa" }
+active   = { fg = "#f38ba8" }
+inactive = {}
+
+# : }}}
+
+
+# : Tasks {{{
+
+[tasks]
+border  = { fg = "#89b4fa" }
+title   = {}
+hovered = { underline = true }
+
+# : }}}
+
+
+# : Which {{{
+
+[which]
+mask            = { bg = "#313244" }
+cand            = { fg = "#94e2d5" }
+rest            = { fg = "#9399b2" }
+desc            = { fg = "#f38ba8" }
+separator       = "  "
+separator_style = { fg = "#585b70" }
+
+# : }}}
+
+
+# : Help {{{
+
+[help]
+on      = { fg = "#f38ba8" }
+exec    = { fg = "#94e2d5" }
+desc    = { fg = "#9399b2" }
+hovered = { bg = "#585b70", bold = true }
+footer  = { fg = "#45475a", bg = "#cdd6f4" }
+
+# : }}}
+
+
+# : File-specific styles {{{
+
+[filetype]
+
+rules = [
+	# Images
+	{ mime = "image/*", fg = "#94e2d5" },
+
+	# Videos
+	{ mime = "video/*", fg = "#f9e2af" },
+	{ mime = "audio/*", fg = "#f9e2af" },
+
+	# Archives
+	{ mime = "application/zip",             fg = "#f38ba8" },
+	{ mime = "application/gzip",            fg = "#f38ba8" },
+	{ mime = "application/x-tar",           fg = "#f38ba8" },
+	{ mime = "application/x-bzip",          fg = "#f38ba8" },
+	{ mime = "application/x-bzip2",         fg = "#f38ba8" },
+	{ mime = "application/x-7z-compressed", fg = "#f38ba8" },
+	{ mime = "application/x-rar",           fg = "#f38ba8" },
+
+	# Documents
+	{ mime = "application/pdf", fg = "#f38ba8" },
+
+	# Empty files
+	{ name = "*", is = "orphan", fg = "#6c7086" },
+	{ name = "*", is = "exec"  , fg = "#a6e3a1" },
+
+	# Special files
+	{ name = "*/", fg = "#89b4fa" },                # Directories
+
+	# Dotfiles
+	{ name = ".*", fg = "#6c7086" },
+
+	# Nix files
+	{ name = "*.nix", fg = "#89dceb" },
+	{ name = "flake.nix", fg = "#89dceb" },
+	{ name = "flake.lock", fg = "#6c7086" },
+
+	# Configuration files
+	{ name = "*.toml", fg = "#fab387" },
+	{ name = "*.yaml", fg = "#fab387" },
+	{ name = "*.yml", fg = "#fab387" },
+	{ name = "*.json", fg = "#f9e2af" },
+
+	# Code files
+	{ name = "*.rs", fg = "#fab387" },
+	{ name = "*.go", fg = "#74c7ec" },
+	{ name = "*.py", fg = "#f9e2af" },
+	{ name = "*.js", fg = "#f9e2af" },
+	{ name = "*.ts", fg = "#89b4fa" },
+	{ name = "*.jsx", fg = "#74c7ec" },
+	{ name = "*.tsx", fg = "#74c7ec" },
+
+	# Text files
+	{ name = "*.md", fg = "#cdd6f4" },
+	{ name = "*.txt", fg = "#cdd6f4" },
+
+	# Git
+	{ name = ".gitignore", fg = "#fab387" },
+	{ name = ".gitconfig", fg = "#fab387" },
+
+	# Logs
+	{ name = "*.log", fg = "#f38ba8" },
+]
+
+[icons]
+"Desktop/"     = ""
+"Documents/"   = "󰈙"
+"Downloads/"   = ""
+"Pictures/"    = ""
+"Music/"       = ""
+"Movies/"      = ""
+"Videos/"      = ""
+"Public/"      = ""
+"Library/"     = ""
+"Applications/" = ""
+
+# Default
+"*"  = "󰈔"
+"*/" = ""
+
+# Dotfiles
+".*" = "󰘓"
+
+# Languages
+"*.rs"   = ""
+"*.go"   = ""
+"*.py"   = ""
+"*.js"   = ""
+"*.ts"   = ""
+"*.jsx"  = ""
+"*.tsx"  = ""
+"*.java" = ""
+"*.c"    = ""
+"*.cpp"  = ""
+"*.h"    = ""
+"*.hpp"  = ""
+
+# Web
+"*.html" = ""
+"*.css"  = ""
+"*.scss" = ""
+"*.sass" = ""
+
+# Config
+"*.json"  = ""
+"*.yaml"  = ""
+"*.yml"   = ""
+"*.toml"  = ""
+"*.ini"   = ""
+"*.conf"  = ""
+"*.config" = ""
+
+# Nix
+"*.nix"      = ""
+"flake.nix"  = ""
+"flake.lock" = ""
+
+# Text
+"*.md"  = ""
+"*.txt" = "󰈙"
+"*.rtf" = ""
+
+# Archives
+"*.zip" = ""
+"*.tar" = ""
+"*.gz"  = ""
+"*.7z"  = ""
+"*.rar" = ""
+
+# Images  
+"*.png"  = ""
+"*.jpg"  = ""
+"*.jpeg" = ""
+"*.gif"  = ""
+"*.webp" = ""
+"*.svg"  = ""
+"*.ico"  = ""
+
+# Videos
+"*.mp4"  = ""
+"*.mkv"  = ""
+"*.avi"  = ""
+"*.mov"  = ""
+"*.wmv"  = ""
+"*.webm" = ""
+
+# Audio
+"*.mp3"  = ""
+"*.flac" = ""
+"*.wav"  = ""
+"*.aac"  = ""
+
+# Documents
+"*.pdf"  = ""
+"*.doc"  = ""
+"*.docx" = ""
+"*.xls"  = ""
+"*.xlsx" = ""
+"*.ppt"  = ""
+"*.pptx" = ""
+
+# Git
+".gitignore" = ""
+".gitconfig" = ""
+
+# Others
+"LICENSE" = ""
+"README"  = ""
+"README.md" = ""
+"Makefile" = ""
+"Dockerfile" = ""
+
+# : }}}
