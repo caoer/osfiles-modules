@@ -11,11 +11,15 @@ _: {
     firewall.allowedTCPPorts = [ 22 ];
   };
 
-  # OpenSSH 10.3 regression: the new sshd-auth subprocess drops privileges
-  # before reading /etc/ssh/authorized_keys.d/%u. NixOS sets /etc/ssh to 700,
-  # so non-root key lookup silently fails. 711 lets the auth subprocess
-  # traverse the directory without exposing host key contents (keys stay 600).
-  systemd.tmpfiles.rules = [
-    "d /etc/ssh 0711 root root -"
-  ];
+  # OpenSSH 10.3 regression: sshd-auth subprocess drops privileges before
+  # reading /etc/ssh/authorized_keys.d/%u. NixOS activation sets /etc/ssh to
+  # 700, blocking non-root key lookup. An activationScript (not tmpfiles —
+  # activation resets perms after tmpfiles runs) sets 711 so sshd-auth can
+  # traverse without exposing host key contents (keys stay 600).
+  system.activationScripts.sshDirPerms = {
+    deps = [ "etc" ];
+    text = ''
+      chmod 711 /etc/ssh
+    '';
+  };
 }
