@@ -75,6 +75,7 @@ in
             };
             script = ''
               set -euo pipefail
+              trap 'umount /btrfs_tmp 2>/dev/null || true' EXIT
               mkdir -p /btrfs_tmp
               mount -t btrfs /dev/disk/by-label/nixos /btrfs_tmp
 
