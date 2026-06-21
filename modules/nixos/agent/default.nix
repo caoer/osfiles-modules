@@ -69,13 +69,20 @@ let
           ~/.paseo/config.json on every daemon start.
         '';
       };
-      installerUrlSecret = lib.mkOption {
+      uccUser = lib.mkOption {
         type = lib.types.str;
-        default = "ucc_installer_url";
+        description = ''
+          UCC installer user identity. Combined with the token to form
+          the installer URL. Not a secret — just an identifier.
+        '';
+      };
+      installerTokenSecret = lib.mkOption {
+        type = lib.types.str;
+        default = "ucc_token";
         description = ''
           sops secret name (in the host's defaultSopsFile) holding the
-          user+token scoped UCC installer URL. Per-user identity — give
-          each user on a multi-user host their own key.
+          per-user UCC installer token. Give each user on a multi-user
+          host their own key name.
         '';
       };
       encryptionPasswordSecret = lib.mkOption {

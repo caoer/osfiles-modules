@@ -82,10 +82,15 @@ in
       description = "PASEO_LISTEN for the daemon (loopback by default — no daemon password needed).";
     };
 
-    installerUrlPath = lib.mkOption {
+    uccUser = lib.mkOption {
       type = lib.types.str;
-      default = "/etc/secrets/ucc_installer_url";
-      description = "On-host path where the consumer's secret delivery places the user+token-scoped UCC installer URL.";
+      description = "UCC installer user identity (combined with token to form URL).";
+    };
+
+    installerTokenPath = lib.mkOption {
+      type = lib.types.str;
+      default = "/etc/secrets/ucc_token";
+      description = "On-host path where the consumer's secret delivery places the per-user UCC installer token.";
     };
 
     encryptionPasswordPath = lib.mkOption {

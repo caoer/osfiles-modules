@@ -45,7 +45,7 @@ in
       # Stay green until the operator pushes the secrets post-activation; the
       # consumer's push-secrets path restarts this unit once they land.
       unitConfig.ConditionPathExists = [
-        cfg.installerUrlPath
+        cfg.installerTokenPath
         cfg.encryptionPasswordPath
       ];
 
@@ -55,9 +55,10 @@ in
         Environment = [ "PATH=${installerDeps}:/usr/local/bin:/usr/bin:/bin" ];
         ExecStart = agentLib.mkInstallerScript {
           name = cfg.username;
+          inherit (cfg) uccUser;
           version = cfg.uccVersion;
           home = cfg.homeDirectory;
-          urlSecretPath = cfg.installerUrlPath;
+          tokenSecretPath = cfg.installerTokenPath;
           passwordSecretPath = cfg.encryptionPasswordPath;
         };
         RemainAfterExit = true;

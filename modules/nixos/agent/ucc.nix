@@ -145,9 +145,10 @@ let
     name: ucfg:
     agentLib.mkInstallerScript {
       inherit name;
+      inherit (ucfg) uccUser;
       version = cfg.uccVersion;
       home = homeOf name;
-      urlSecretPath = config.sops.secrets.${ucfg.installerUrlSecret}.path;
+      tokenSecretPath = config.sops.secrets.${ucfg.installerTokenSecret}.path;
       passwordSecretPath = config.sops.secrets.${ucfg.encryptionPasswordSecret}.path;
     };
 
@@ -252,7 +253,7 @@ in
     # one sops.secrets entry can only have one owner.
     sops.secrets = lib.mkMerge (
       lib.mapAttrsToList (name: ucfg: {
-        ${ucfg.installerUrlSecret} = {
+        ${ucfg.installerTokenSecret} = {
           mode = "0400";
           owner = name;
         };

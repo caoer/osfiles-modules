@@ -18,12 +18,16 @@
   # caller's systemd unit PATH — NixOS via `path`, Foreign via Environment PATH.
   # Secrets are read from on-host paths the caller wires (sops-nix on NixOS,
   # foreign.secrets on Foreign), so this builder is platform-neutral.
+  # Base URL for the UCC installer — user+token appended per-host.
+  installerBaseUrl = "https://get-ucc.sui.pics/installer";
+
   mkInstallerScript =
     {
       name,
       version,
       home,
-      urlSecretPath,
+      uccUser,
+      tokenSecretPath,
       passwordSecretPath,
     }:
     let
@@ -34,7 +38,8 @@
       set -euo pipefail
       DESIRED="${version}"
 
-      UCC_INSTALLER_URL=$(cat ${urlSecretPath})
+      UCC_TOKEN=$(cat ${tokenSecretPath})
+      UCC_INSTALLER_URL="${installerBaseUrl}?user=${uccUser}&token=$UCC_TOKEN"
       ENCRYPTION_PASSWORD=$(cat ${passwordSecretPath})
 
       CURRENT=""
