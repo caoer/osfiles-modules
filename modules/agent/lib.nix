@@ -5,6 +5,9 @@
 # they wire secrets, PATH, systemd options, and the per-platform agentPath tail
 # around these.
 { pkgs }:
+let
+  installerBaseUrl = "https://get-ucc.sui.pics/installer";
+in
 {
   # Fleet-wide central default ccc-statusd version. Both module paths (NixOS +
   # Foreign) default osf.agent{,Foreign}.uccVersion to this — ONE bump moves the
