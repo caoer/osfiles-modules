@@ -53,18 +53,60 @@ let
         description = "Run a paseo daemon for this user (paseo-<user>.service).";
       };
       paseoConfigFile = lib.mkOption {
-        type = lib.types.path;
-        # REQUIRED — no default (R3). Each consumer supplies its OWN paseo
-        # config JSON (relay endpoint, providers, daemon.listen port are all
-        # consumer-specific). Leaving it unset fails loud at eval ("option …
-        # paseoConfigFile is used but not defined") rather than silently
-        # inheriting another consumer's relay/providers. The module owns the
-        # render mechanism (@UCC_BIN@ → ucc bin dir); the consumer owns the JSON.
+        type = lib.types.nullOr lib.types.path;
+        default = null;
         description = ''
-          Path to this user's paseo config JSON (with the @UCC_BIN@
-          placeholder). REQUIRED when enable. The module renders it
-          into the store and paseo.nixos.nix installs a writable copy at
-          ~/.paseo/config.json on every daemon start.
+          LEGACY: path to a static paseo config JSON (with @UCC_BIN@
+          placeholder). Rendered into the store with ucc bin dir injected,
+          then installed as a writable copy. Mutually exclusive with
+          paseoConfig — if paseoConfig is set, this is ignored.
+        '';
+      };
+      paseoConfig = lib.mkOption {
+        type = lib.types.nullOr (lib.types.submodule {
+          options = {
+            listen = lib.mkOption {
+              type = lib.types.str;
+              default = "127.0.0.1:6767";
+              description = "daemon.listen address:port.";
+            };
+            relay = lib.mkOption {
+              type = lib.types.attrsOf lib.types.anything;
+              default = { endpoint = "paseo-relay.innopals.com:443"; useTls = true; };
+              description = "Relay config (endpoint, useTls, enabled).";
+            };
+            defaultLauncher = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = ''
+                Profile name for the default claude provider. null = ucc-auto.
+                E.g. "opus48" → command is ucc-opus48, and that wrapper is
+                excluded from the auto-discovered extra providers.
+              '';
+            };
+            features = lib.mkOption {
+              type = lib.types.attrsOf lib.types.anything;
+              default = { dictation = { enabled = false; }; voiceMode = { enabled = false; }; };
+              description = "Feature flags (dictation, voiceMode).";
+            };
+            providerOverrides = lib.mkOption {
+              type = lib.types.attrsOf lib.types.anything;
+              default = { };
+              example = { glm = { additionalModels = [{ id = "glm-5.1"; label = "glm-5.1"; }]; }; };
+              description = ''
+                Per-provider overrides deep-merged onto discovered providers.
+                Use for additionalModels, custom labels, or force-enabling a
+                provider the scan would otherwise skip.
+              '';
+            };
+          };
+        });
+        default = null;
+        description = ''
+          Structured paseo config — dynamic provider discovery from ucc-*
+          wrappers at daemon start. When set, replaces paseoConfigFile.
+          Providers are discovered from ~/.local/share/ucc/bin/ucc-* (laid
+          down by ucc-update, which syncs from the worker DO).
         '';
       };
       environment = lib.mkOption {
@@ -97,13 +139,29 @@ let
 
   # config.json rendered into the store with the per-user ucc bin dir injected
   # in place of the consumer JSON's @UCC_BIN@ placeholder. The JSON source is
-  # the consumer-supplied paseoConfigFile (REQUIRED), so the flake owns the
-  # render mechanism while each repo owns its own config content.
+  # the consumer-supplied paseoConfigFile, so the flake owns the render
+  # mechanism while each repo owns its own config content.
+  # LEGACY path — used when paseoConfig is null and paseoConfigFile is set.
   renderPaseoConfig =
     name: home: configFile:
     agentLib.renderPaseoConfig {
       inherit name configFile;
       uccBinDir = "${home}/.local/share/ucc/bin";
+    };
+
+  # Dynamic path — generates config at daemon start from discovered wrappers.
+  mkGenScript =
+    name: home: pcfg:
+    let
+      uccBinDir = "${home}/.local/share/ucc/bin";
+      baseConfigFile = agentLib.mkPaseoBaseConfig {
+        inherit name;
+        inherit (pcfg) listen relay features;
+      };
+    in
+    agentLib.mkPaseoConfigGenScript {
+      inherit name home uccBinDir baseConfigFile;
+      inherit (pcfg) defaultLauncher providerOverrides;
     };
 in
 {
@@ -135,12 +193,22 @@ in
       let
         inherit (config.users.users.${name}) home;
         paseoHome = "${home}/.paseo";
+        useDynamic = ucfg.paseoConfig != null;
+        # Legacy: static config from file with @UCC_BIN@ substitution
         configJson = renderPaseoConfig name home ucfg.paseoConfigFile;
+        # Dynamic: gen script discovers ucc-* wrappers at start
+        genScript = mkGenScript name home ucfg.paseoConfig;
       in
+      assert lib.assertMsg (useDynamic || ucfg.paseoConfigFile != null)
+        "osf.paseo.users.${name}: set either paseoConfig (dynamic) or paseoConfigFile (legacy)";
       lib.nameValuePair "paseo-${name}" {
         description = "Paseo daemon for ${name} - self-hosted daemon for AI coding agents";
-        after = [ "network-online.target" ];
-        wants = [ "network-online.target" ];
+        after = [ "network-online.target" ]
+          # Dynamic mode: wrappers must exist before gen script runs.
+          ++ lib.optional useDynamic "ucc-update-${name}.service";
+        wants = [ "network-online.target" ]
+          ++ lib.optional useDynamic "ucc-update-${name}.service";
+        requires = lib.optional useDynamic "ucc-update-${name}.service";
         wantedBy = [ "multi-user.target" ];
 
         # Clean restart (fleet stability). paseo runs its agents as DIRECT
@@ -169,16 +237,16 @@ in
           Type = "simple";
           User = name;
 
-          # Writable config.json. paseo's onboard / config-save writeFileSync's
-          # to this path; a read-only store symlink would EROFS-crash it.
-          ExecStartPre = [
-            # migration + idempotence: drop any stale read-only HM symlink so
-            # `install` cannot write THROUGH it into the read-only store (that
-            # re-creates the EROFS).
-            "${pkgs.coreutils}/bin/rm -f ${paseoHome}/config.json"
-            # writable copy from the store — re-laid on every start, declarative wins.
-            "${pkgs.coreutils}/bin/install -D -m 0600 ${configJson} ${paseoHome}/config.json"
-          ];
+          ExecStartPre =
+            if useDynamic then [
+              # Dynamic: gen script scans wrappers → builds providers → writes config.json
+              "${pkgs.coreutils}/bin/rm -f ${paseoHome}/config.json"
+              "${genScript}"
+            ] else [
+              # Legacy: writable copy from the store-rendered static config.
+              "${pkgs.coreutils}/bin/rm -f ${paseoHome}/config.json"
+              "${pkgs.coreutils}/bin/install -D -m 0600 ${configJson} ${paseoHome}/config.json"
+            ];
           ExecStart = "${paseoPkg}/bin/paseo-server";
 
           Restart = "on-failure";

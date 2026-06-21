@@ -104,6 +104,9 @@ in
   # then materialize a WRITABLE copy at ~/.paseo/config.json via a systemd
   # ExecStartPre install (paseo's onboard / config-save writeFileSync's that
   # path; a read-only store symlink would EROFS-crash it).
+  #
+  # LEGACY: used by consumers that still pass a static paseoConfigFile. New
+  # consumers should use mkPaseoConfigGenScript (dynamic provider discovery).
   renderPaseoConfig =
     {
       name,
@@ -113,4 +116,112 @@ in
     pkgs.writeText "paseo-config-${name}.json" (
       builtins.replaceStrings [ "@UCC_BIN@" ] [ uccBinDir ] (builtins.readFile configFile)
     );
+
+  # --- Dynamic paseo config generation (provider discovery) ---
+  #
+  # Generates a script that discovers installed ucc-* wrappers at daemon start,
+  # builds the agents.providers block, merges with a nix-generated base config,
+  # and writes ~/.paseo/config.json. Eliminates duplication between R2/DO profile
+  # data and the static paseo JSON — the UCC installer (which syncs from the
+  # worker DO) is the single source of truth for available profiles.
+  #
+  # Ordering: paseo-<user>.service must After/Requires ucc-update-<user>.service
+  # so wrappers are guaranteed fresh when this script runs.
+  mkPaseoConfigGenScript =
+    {
+      name,
+      home,
+      uccBinDir,
+      baseConfigFile,
+      defaultLauncher ? null, # null = "ucc-auto"; string = profile name e.g. "opus48"
+      providerOverrides ? { }, # deep-merged into discovered providers
+    }:
+    let
+      launcher = if defaultLauncher == null then "ucc-auto" else "ucc-${defaultLauncher}";
+      launcherName = if defaultLauncher == null then "auto" else defaultLauncher;
+      overridesJson = builtins.toJSON providerOverrides;
+      paseoHome = "${home}/.paseo";
+    in
+    pkgs.writeShellScript "paseo-gen-config-${name}" ''
+      set -euo pipefail
+
+      UCC_BIN="${uccBinDir}"
+      CONFIG="${paseoHome}/config.json"
+      BASE="${baseConfigFile}"
+
+      mkdir -p "${paseoHome}"
+
+      # --- Build providers from discovered ucc-* wrappers ---
+      PROVIDERS='{}'
+
+      # Default claude provider
+      PROVIDERS=$(echo "$PROVIDERS" | ${pkgs.jq}/bin/jq --arg cmd "$UCC_BIN/${launcher}" \
+        '. + { "claude": { "enabled": true, "command": [$cmd] } }')
+
+      # Discover additional wrappers → extends claude
+      if [ -d "$UCC_BIN" ]; then
+        for wrapper in "$UCC_BIN"/ucc-*; do
+          [ -x "$wrapper" ] || continue
+          wname="''${wrapper##*/ucc-}"
+
+          # Skip built-ins and the default launcher itself
+          case "$wname" in
+            auto|random|codex|${launcherName}) continue ;;
+          esac
+
+          PROVIDERS=$(echo "$PROVIDERS" | ${pkgs.jq}/bin/jq \
+            --arg n "$wname" --arg cmd "$wrapper" \
+            '. + { ($n): { "extends": "claude", "label": $n, "command": [$cmd] } }')
+        done
+      fi
+
+      # Static built-in providers
+      PROVIDERS=$(echo "$PROVIDERS" | ${pkgs.jq}/bin/jq '. + {
+        "codex": { "enabled": true },
+        "copilot": { "enabled": false },
+        "opencode": { "enabled": false },
+        "pi": { "enabled": false }
+      }')
+
+      # Apply per-provider overrides (deep merge)
+      OVERRIDES='${overridesJson}'
+      if [ "$OVERRIDES" != "{}" ] && [ "$OVERRIDES" != "null" ]; then
+        PROVIDERS=$(echo "$PROVIDERS" | ${pkgs.jq}/bin/jq --argjson ov "$OVERRIDES" '
+          . as $base | $ov | to_entries | reduce .[] as $e ($base;
+            if .[$e.key] then .[$e.key] = (.[$e.key] * $e.value)
+            else .[$e.key] = $e.value end
+          )')
+      fi
+
+      # Merge base config + providers → final config.json
+      ${pkgs.jq}/bin/jq --argjson providers "$PROVIDERS" \
+        '.agents.providers = $providers' "$BASE" > "$CONFIG"
+
+      chmod 0600 "$CONFIG"
+      echo "paseo-gen-config: $(echo "$PROVIDERS" | ${pkgs.jq}/bin/jq 'length') provider(s)"
+    '';
+
+  # Generate the static base config JSON (everything except agents.providers).
+  # Providers are filled at runtime by mkPaseoConfigGenScript.
+  mkPaseoBaseConfig =
+    {
+      name,
+      listen ? "127.0.0.1:6767",
+      relay ? { endpoint = "paseo-relay.innopals.com:443"; useTls = true; },
+      features ? { dictation = { enabled = false; }; voiceMode = { enabled = false; }; },
+    }:
+    pkgs.writeText "paseo-base-${name}.json" (builtins.toJSON {
+      version = 1;
+      daemon = {
+        inherit listen;
+        inherit relay;
+        mcp = { injectIntoAgents = true; };
+        autoArchiveAfterMerge = false;
+        appendSystemPrompt = "";
+        cors = { allowedOrigins = [ "https://app.paseo.sh" ]; };
+      };
+      app = { baseUrl = "https://app.paseo.sh"; };
+      agents = { providers = { }; };
+      inherit features;
+    });
 }
