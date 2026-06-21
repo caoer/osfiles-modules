@@ -32,11 +32,24 @@
         PermitRootLogin = lib.mkDefault "prohibit-password";
         PasswordAuthentication = lib.mkDefault false;
         KbdInteractiveAuthentication = lib.mkDefault false;
+        X11Forwarding = false;
+        UseDns = false;
+        # Clean stale gpg-agent / ssh-agent sockets on reconnect
+        StreamLocalBindUnlink = true;
       };
       ports = lib.mkDefault [ 22 ];
+      # System-managed authorized_keys only — prevents rogue ~/.ssh/authorized_keys injections.
+      authorizedKeysFiles = lib.mkForce [ "/etc/ssh/authorized_keys.d/%u" ];
     };
     fail2ban.enable = lib.mkDefault true;
     qemuGuest.enable = lib.mkDefault true;
+  };
+
+  # Pin host keys for common forges — eliminates TOFU prompts and MITM surface.
+  programs.ssh.knownHosts = {
+    "github.com".publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl";
+    "gitlab.com".publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAfuCHKVTjquxvt6CM6tdG4SLp1Btn/nOeHHE5UOzRdf";
+    "codeberg.org".publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIVIC02vnjFyL+I4RHfvIGNtOgJMe769VTF1VR4EB3ZB";
   };
 
   networking.nftables.enable = lib.mkDefault true;
