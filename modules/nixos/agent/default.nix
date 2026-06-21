@@ -82,10 +82,20 @@ let
         type = lib.types.str;
         default = "ucc_encryption_password";
         description = ''
-          sops secret name (in the host's defaultSopsFile) holding the
-          UCC ENCRYPTION_PASSWORD. Shared across hosts; duplicated into
-          the host yaml (zt-agent-v2 precedent) instead of widening
-          common.yaml's recipient list.
+          sops secret name holding the UCC ENCRYPTION_PASSWORD. Shared
+          across hosts — decrypted from the centralized secrets/ucc.yaml
+          in osf-modules by default.
+        '';
+      };
+      encryptionPasswordSopsFile = lib.mkOption {
+        type = lib.types.path;
+        default = ../../../secrets/ucc.yaml;
+        defaultText = lib.literalExpression "osf-modules's secrets/ucc.yaml";
+        description = ''
+          Path to the sops-encrypted file containing the UCC encryption
+          password. Defaults to the centralized secrets/ucc.yaml shipped
+          with osf-modules (all UCC hosts listed in its .sops.yaml).
+          Override per-host if the host's key isn't in osf-modules yet.
         '';
       };
       claudeSettings = lib.mkOption {

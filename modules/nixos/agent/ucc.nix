@@ -259,6 +259,9 @@ in
         ${ucfg.encryptionPasswordSecret} = {
           mode = "0400";
           owner = name;
+          # Centralized in osf-modules — all UCC hosts listed in .sops.yaml.
+          # Override per-host with osf.agent.users.<n>.encryptionPasswordSopsFile.
+          sopsFile = ucfg.encryptionPasswordSopsFile;
         };
       }) cfg.users
     );

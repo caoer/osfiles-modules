@@ -1,0 +1,32 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SOPS configuration — osfiles-modules (shared UCC secrets)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# secrets/ucc.yaml holds the fleet-wide UCC encryption password. Every host
+# running the agent module (osf.agent.enable) must be listed here so sops-nix
+# can decrypt on that box.
+#
+# Add a new UCC host:
+#   1. Derive the age key: ssh-to-age < /etc/ssh/ssh_host_ed25519_key.pub
+#   2. Add an anchor below
+#   3. Add it to the creation_rules age list
+#   4. Run: sops updatekeys secrets/ucc.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+
+keys:
+  # Admin — ZT's standalone age identity (edits secrets locally).
+  - &zt_admin age1y4pe246erue99v3zpkuxyk8s0gcvsesw7wge8yu44sgtxz52a5tsgnv92w
+
+  # --- UCC hosts (agent module consumers) ---
+  - &zt_agent_v2  age1ju89faen0j9jz7stqkgz7r2ek86dk0zzgj2hpnvr6yr5eg9pmawshqkgq5
+  - &xiaobai_lax  age1yp8azdf09u37cgy9y8prwed25uhte6u085jn0s4xx44s5qldrvtsq9puzs
+  - &yangming     age1grthh353hvwen3mmktt7w2v4puzt2ep7gwfeenh5weuq3wvr4qgqxrlxsp
+
+creation_rules:
+  - path_regex: secrets/.*\.yaml$
+    key_groups:
+      - age:
+          - *zt_admin
+          - *zt_agent_v2
+          - *xiaobai_lax
+          - *yangming
