@@ -1,0 +1,28 @@
+{ config, lib, ... }:
+let
+  cfg = config.osf.aliases;
+in
+{
+  options.osf.aliases = {
+    enable = lib.mkEnableOption "shell aliases";
+  };
+
+  config = lib.mkIf cfg.enable {
+    programs.zsh.shellGlobalAliases = {
+      C = "| pbcopy";
+    };
+
+    programs.zsh.shellAliases = {
+      fj = "fj -H git.0xdao.app";
+      tt = "ucc-auto";
+
+      c = "tput clear";
+
+      ".." = "cd ..";
+      "..." = "cd ../..";
+      "...." = "cd ../../..";
+      "....." = "cd ../../../..";
+      "......" = "cd ../../../../..";
+    };
+  };
+}

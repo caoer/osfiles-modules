@@ -55,17 +55,6 @@
     in
     {
       # --- Golden base modules (Proxmox VM, btrfs, impermanence) ---
-      #
-      # disko          ROOT-ONLY btrfs layout (ESP + @/@nix/@home, no @persist)
-      # hardware       UEFI + systemd-boot + qemu-guest (closes over disko input)
-      # network        DNS + SSH firewall
-      # external-persist  impermanence on /persist (closes over impermanence input)
-      # golden-base    meta-module importing all four
-      #
-      # --- Agent profile modules (ucc + claude + paseo + codex) ---
-      #
-      # agent          NixOS per-user agent profile (closes over paseo input)
-
       nixosModules = {
         disko = import ./modules/disko.nix;
         hardware = import ./modules/hardware.nix {
@@ -75,9 +64,6 @@
         external-persist = import ./modules/external-persist.nix {
           impermanenceModule = inputs.impermanence.nixosModules.impermanence;
         };
-
-        agent = import ./modules/nixos/agent { paseoFlake = paseo; };
-        default = self.nixosModules.agent;
 
         # Convenience meta-module: the complete golden-clone machine layer.
         golden-base =
@@ -91,30 +77,22 @@
             ];
           };
 
-        # System-level baseline for semi-managed dev boxes (nix, sshd,
-        # fail2ban, nftables, CLI tools, docker). All mkDefault.
+        # System-level baseline for semi-managed dev boxes.
         member-base = import ./modules/member-base.nix;
+
+        # Default: member-base + agent NixOS modules (ucc, paseo).
+        default = import ./modules/_all-nixos.nix { paseoFlake = paseo; };
       };
 
-      # Foreign (non-NixOS, system-manager) agent profile system layer.
+      # Foreign (non-NixOS, system-manager) modules.
       systemManagerModules = {
-        agent = import ./modules/system-manager/agent { paseoFlake = paseo; };
-        default = self.systemManagerModules.agent;
+        default = import ./modules/_all-sm.nix { paseoFlake = paseo; };
       };
 
-      # Platform-neutral home-manager fragment (ucc paths, claude link, prompts,
-      # paseo config, codex). Imported by both NixOS and Foreign/HM-standalone.
-      homeModules = {
-        agentHome = import ./modules/agent/hm.nix;
-        default = self.homeModules.agentHome;
-      };
-
-      # HM profile for semi-managed dev boxes: git, aliases, neovim, tmux,
-      # yazi, atuin, starship, zoxide, btop, direnv, eza, glow, lazygit,
-      # dev toolchains. All config files bundled.
+      # HM modules: all tool modules (opt-in via osf.<tool>.enable) + presets.
       homeManagerModules = {
-        member-home = import ./modules/member-home;
-        default = self.homeManagerModules.member-home;
+        default = import ./modules/_all-hm.nix;
+        dev-box = import ./presets/dev-box.nix;
       };
 
       # Re-exported packages: paseo (central pin), codex (ahead of nixpkgs),
