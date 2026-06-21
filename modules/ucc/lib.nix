@@ -156,7 +156,7 @@ in
 
       # Default claude provider
       PROVIDERS=$(echo "$PROVIDERS" | ${pkgs.jq}/bin/jq --arg cmd "$UCC_BIN/${launcher}" \
-        '. + { "claude": { "enabled": true, "command": [$cmd] } }')
+        '. + { "claude": { "enabled": true, "command": [$cmd], "env": { "TERM": "xterm-256color" } } }')
 
       # Discover additional wrappers → extends claude
       # Only include actual profile launchers (comment line: "Launch Claude Code with … profile").
