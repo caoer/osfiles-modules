@@ -1,11 +1,12 @@
 # linux/ — server-only home-manager modules (store-copy / rebuild model).
+{ configDir }:
 {
   imports = [
     ./btop.nix
-    ./direnv.nix
+    (import ./direnv.nix { inherit configDir; })
     ./eza.nix
-    ./glow.nix
+    (import ./glow.nix { inherit configDir; })
     ./lazygit.nix
-    ./server-files.nix
+    (import ./server-files.nix { inherit configDir; })
   ];
 }

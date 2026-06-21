@@ -1,8 +1,6 @@
 # Drop tool configs into ~/.config/ on headless servers via HM store-copy.
+{ configDir }:
 { config, lib, ... }:
-let
-  configDir = ../config;
-in
 {
   xdg.configFile = {
     # nvim — read-only LazyVim sources. lazyvim.json and lazy-lock.json

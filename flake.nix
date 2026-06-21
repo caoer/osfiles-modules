@@ -35,6 +35,15 @@
       url = "github:getpaseo/paseo/d0189f3f65";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # Source-only fetch of osfiles — just the file tree, no flake evaluation.
+    # Provides config/ (tool configs: yazi, nvim, tmux, starship, etc.) as a
+    # single source of truth. member-home modules reference this instead of
+    # bundling a stale copy.
+    osfiles-src = {
+      url = "git+ssh://git@github.com/caoer/osfiles.git";
+      flake = false;
+    };
   };
 
   outputs =
@@ -111,9 +120,11 @@
 
       # HM profile for semi-managed dev boxes: git, aliases, neovim, tmux,
       # yazi, atuin, starship, zoxide, btop, direnv, eza, glow, lazygit,
-      # dev toolchains. All config files bundled.
+      # dev toolchains. Config sourced from osfiles (single source of truth).
       homeManagerModules = {
-        member-home = import ./modules/member-home;
+        member-home = import ./modules/member-home {
+          configDir = inputs.osfiles-src + "/config";
+        };
         default = self.homeManagerModules.member-home;
       };
 

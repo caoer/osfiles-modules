@@ -1,3 +1,4 @@
+{ configDir }:
 _: {
   programs.direnv = {
     enable = true;
@@ -9,6 +10,6 @@ _: {
         log_format = "";
       };
     };
-    stdlib = builtins.readFile ../config/direnv/lib/sops.sh;
+    stdlib = builtins.readFile (configDir + "/direnv/lib/sops.sh");
   };
 }

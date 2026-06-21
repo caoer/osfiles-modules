@@ -1,3 +1,4 @@
+{ configDir }:
 { pkgs, ... }:
 let
   yamlFormat = pkgs.formats.yaml { };
@@ -12,6 +13,6 @@ in
 {
   xdg.configFile = {
     "glow/glow.yml".source = glowConfigFile;
-    "glow/tokyo-night.json".source = ../config/glow/tokyo-night.json;
+    "glow/tokyo-night.json".source = configDir + "/glow/tokyo-night.json";
   };
 }

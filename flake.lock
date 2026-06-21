@@ -112,6 +112,22 @@
         "type": "github"
       }
     },
+    "osfiles-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1782054909,
+        "narHash": "sha256-KNg86FeqdD2ucRawvSNLccD2wYOAPIOaqHXWAhtABWE=",
+        "ref": "refs/heads/main",
+        "rev": "00754917ebdbe9132eaa7e0606c2ef9f87e3bb65",
+        "revCount": 1247,
+        "type": "git",
+        "url": "ssh://git@github.com/caoer/osfiles.git"
+      },
+      "original": {
+        "type": "git",
+        "url": "ssh://git@github.com/caoer/osfiles.git"
+      }
+    },
     "paseo": {
       "inputs": {
         "nixpkgs": [
@@ -139,6 +155,7 @@
         "home-manager": "home-manager",
         "impermanence": "impermanence",
         "nixpkgs": "nixpkgs_2",
+        "osfiles-src": "osfiles-src",
         "paseo": "paseo",
         "sops-nix": "sops-nix"
       }
