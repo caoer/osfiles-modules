@@ -159,6 +159,8 @@ in
         '. + { "claude": { "enabled": true, "command": [$cmd] } }')
 
       # Discover additional wrappers → extends claude
+      # Only include actual profile launchers (comment line: "Launch Claude Code with … profile").
+      # Skips utilities: ucc-*-cli, ucc-*-ip, ucc-source-*, ucc-sdk, ucc-cli, ucc-codexd.
       if [ -d "$UCC_BIN" ]; then
         for wrapper in "$UCC_BIN"/ucc-*; do
           [ -x "$wrapper" ] || continue
@@ -168,6 +170,11 @@ in
           case "$wname" in
             auto|random|codex|${launcherName}) continue ;;
           esac
+
+          # Only profile launchers — verified by the header comment the installer writes
+          if ! ${pkgs.gnused}/bin/sed -n '2p' "$wrapper" | ${pkgs.gnugrep}/bin/grep -q "Launch Claude Code with"; then
+            continue
+          fi
 
           PROVIDERS=$(echo "$PROVIDERS" | ${pkgs.jq}/bin/jq \
             --arg n "$wname" --arg cmd "$wrapper" \
