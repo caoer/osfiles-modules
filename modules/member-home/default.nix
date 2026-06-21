@@ -3,15 +3,11 @@
 # Single profile merging server + dev toolchains. Absorbs:
 #   common/ (git, aliases, neovim, atuin, yazi, starship, zoxide, session)
 #   linux/  (btop, direnv, eza, glow, lazygit, server-files)
-#
-# Config files (nvim, tmux, yazi, starship, atuin, lazygit, glow, direnv,
-# remote-env) sourced from osfiles via configDir — single source of truth,
-# no local copy to drift.
+#   config/ (nvim, tmux, yazi, starship, atuin, lazygit, glow, direnv, remote-env)
 #
 # Per-owner content (ssh.nix, paseo config) stays in consumer repos.
 # All settings use lib.mkDefault where appropriate — override with mkForce
 # or plain assignment in per-owner repos.
-{ configDir }:
 {
   config,
   lib,
@@ -21,17 +17,17 @@
 {
   imports = [
     ./common
-    (import ./linux { inherit configDir; })
+    ./linux
   ];
 
   programs = {
     home-manager.enable = true;
 
     atuin.enableZshIntegration = lib.mkForce true;
-    atuin.settings = builtins.fromTOML (builtins.readFile (configDir + "/atuin/config.toml"));
+    atuin.settings = builtins.fromTOML (builtins.readFile ./config/atuin/config.toml);
 
     starship.settings = builtins.fromTOML (
-      builtins.readFile (configDir + "/starship/starship-server.toml")
+      builtins.readFile ./config/starship/starship-server.toml
     );
 
     zsh = {
@@ -55,9 +51,9 @@
     tmux = {
       enable = true;
       extraConfig =
-        builtins.readFile (configDir + "/tmux/tmux-base.conf")
+        builtins.readFile ./config/tmux/tmux-base.conf
         + "\n"
-        + builtins.readFile (configDir + "/tmux/tmux.remote-mode.conf");
+        + builtins.readFile ./config/tmux/tmux.remote-mode.conf;
     };
 
     git.signing.format = null;
@@ -98,7 +94,7 @@
   };
 
   home.packages = with pkgs; [
-    (writeScriptBin "pbcopy" (builtins.readFile (configDir + "/remote-env/bin/pbcopy")))
+    (writeScriptBin "pbcopy" (builtins.readFile ./config/remote-env/bin/pbcopy))
     glow
     lazydocker
     nodejs

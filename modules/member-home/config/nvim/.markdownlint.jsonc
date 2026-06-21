@@ -1,0 +1,21 @@
+{
+  // Markdownlint configuration
+  // Disable rules that conflict with CLAUDE.md format
+
+  "default": true,
+
+  // MD041: First line in file should be a top level heading
+  // CLAUDE.md files often start with instructions, not headings
+  "MD041": false,
+
+  // MD033: Inline HTML
+  // CLAUDE.md uses XML-like tags like <example>, <thinking>
+  "MD033": false,
+
+  // MD034: Bare URL used
+  "MD034": false,
+
+  // MD013: Line length
+  // CLAUDE.md can have long example lines
+  "MD013": false
+}

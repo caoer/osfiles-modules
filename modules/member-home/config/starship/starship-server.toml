@@ -1,0 +1,135 @@
+"$schema" = 'https://starship.rs/config-schema.json'
+
+# Inserts a blank line between shell prompts
+add_newline = false
+command_timeout = 1000
+
+format = """
+[╭](dimmed white) \
+$directory\
+${custom.git_relative_path}\
+${custom.git_branch}\
+$git_commit\
+$git_state\
+$git_status\
+${custom.identity}\
+${env_var.DENV_ENV_NAME}\
+$fill\
+$status\
+$cmd_duration\
+$username\
+$hostname\
+$time\
+$line_break\
+[╰](dimmed white) \
+$character"""
+
+# Replace the "❯" symbol in the prompt with "➜"
+[character]
+success_symbol = "[❯](bold yellow)"
+error_symbol = '[❯](bold red)'
+vimcmd_symbol = '[❮](bold goldenrod)'
+
+[aws]
+disabled = true
+
+[gcloud]
+disabled = true
+
+[git_commit]
+commit_hash_length = 4
+tag_symbol = "🔖 "
+disabled = true
+only_detached = false
+
+[git_status]
+ignore_submodules = true
+
+[git_metrics]
+disabled = true
+added_style = "bold blue"
+format = "[+$added]($added_style)/[-$deleted]($deleted_style) "
+
+[directory]
+truncation_length = 5
+disabled = false
+style = "bold yellow"
+
+[git_branch]
+# Disabled in favor of custom.git_branch that respects tmux
+disabled = true
+
+# Enable and configure the status module
+[status]
+disabled = false
+# format = '[$symbol$status]($style) '
+format = '[$symbol$common_meaning$signal_name $int]($style) '
+symbol = "❌ "
+success_symbol = ""                                                                       # Empty to hide on success
+not_executable_symbol = "🚫 "
+not_found_symbol = "🔍 "
+sigint_symbol = "🧱 "
+signal_symbol = "⚡ "
+style = "bold"
+failure_style = "bold fg:#ED7803"
+map_symbol = true                                                                         # Show different symbols for different signals
+recognize_signal_code = true
+pipestatus = true                                                                         # Show pipe status codes
+pipestatus_separator = "|"
+pipestatus_format = '\[$pipestatus\] => [$symbol$common_meaning$signal_name$int]($style)'
+
+[custom.git_relative_path]
+command = '''
+rel_path=$(git rev-parse --show-prefix 2>/dev/null | sed 's|/$||')
+[ -n "$rel_path" ] && echo "$rel_path"
+'''
+when = '[ -n "$TMUX" ]'
+style = "cyan bold"
+format = "[$output ]($style)"
+
+[custom.git_branch]
+command = 'git symbolic-ref --short HEAD 2>/dev/null || git describe --tags --exact-match 2>/dev/null || git rev-parse --short HEAD 2>/dev/null'
+when = '[ -z "$TMUX" ]'
+style = "bold purple"
+format = "[$symbol($output )]($style)"
+symbol = " "
+
+[custom.identity]
+command = 'identity_with_path'
+when = false
+
+[env_var.DENV_ENV_NAME]
+variable = "DENV_ENV_NAME"
+format = "[{$env_value}]($style) "
+style = "yellow"
+
+[username]
+style_user = "bold green"
+style_root = "bold red"
+format = "[$user]($style)"
+show_always = true
+
+[hostname]
+ssh_only = false
+format = "[@$hostname](bold cyan) "
+trim_at = "."
+aliases = { "mac-m4" = "" }
+
+[fill]
+symbol = "·"
+style = "cyan"
+
+[cmd_duration]
+min_time = 2_000
+format = "[$duration]($style) "
+style = "yellow"
+
+[time]
+disabled = false
+format = "[$time]($style)"
+style = "bold dimmed white"
+time_format = "%H:%M"
+utc_time_offset = "+8"
+
+[bun]
+format = 'via [🍔 $version](bold green) '
