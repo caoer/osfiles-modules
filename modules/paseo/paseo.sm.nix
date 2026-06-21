@@ -80,12 +80,53 @@ in
     };
 
     paseoConfigFile = lib.mkOption {
-      type = lib.types.path;
+      type = lib.types.nullOr lib.types.path;
+      default = null;
       description = ''
-        Path to this host's paseo config JSON (with the @UCC_BIN@ placeholder).
-        REQUIRED. Rendered into the store with the ucc bin dir injected; a
-        WRITABLE copy is installed at ~/.paseo/config.json on every daemon start
-        (paseo writeFileSync's that path; a read-only store symlink EROFS-crashes).
+        LEGACY: path to a static paseo config JSON (with @UCC_BIN@ placeholder).
+        Rendered into the store with ucc bin dir injected, then installed as a
+        writable copy. Mutually exclusive with paseoConfig — if paseoConfig is
+        set, this is ignored.
+      '';
+    };
+
+    paseoConfig = lib.mkOption {
+      type = lib.types.nullOr (lib.types.submodule {
+        options = {
+          listen = lib.mkOption {
+            type = lib.types.str;
+            default = "127.0.0.1:6767";
+            description = "daemon.listen address:port.";
+          };
+          relay = lib.mkOption {
+            type = lib.types.attrsOf lib.types.anything;
+            default = { endpoint = "paseo-relay.innopals.com:443"; useTls = true; };
+            description = "Relay config (endpoint, useTls, enabled).";
+          };
+          defaultLauncher = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = ''
+              Profile name for the default claude provider. null = ucc-auto.
+              E.g. "opus48" → command is ucc-opus48, excluded from auto-discovery.
+            '';
+          };
+          features = lib.mkOption {
+            type = lib.types.attrsOf lib.types.anything;
+            default = { dictation = { enabled = false; }; voiceMode = { enabled = false; }; };
+            description = "Feature flags (dictation, voiceMode).";
+          };
+          providerOverrides = lib.mkOption {
+            type = lib.types.attrsOf lib.types.anything;
+            default = { };
+            description = "Per-provider overrides deep-merged onto discovered providers.";
+          };
+        };
+      });
+      default = null;
+      description = ''
+        Structured paseo config — dynamic provider discovery from ucc-*
+        wrappers at daemon start. When set, replaces paseoConfigFile.
       '';
     };
 
@@ -107,40 +148,63 @@ in
     };
   };
 
-  config = lib.mkIf cfg.enable {
-    systemd.services.paseo = {
-      description = "Paseo - self-hosted daemon for AI coding agents";
-      after = [ "network-online.target" ];
-      wants = [ "network-online.target" ];
-      wantedBy = [ "multi-user.target" ];
-
-      serviceConfig = {
-        Type = "simple";
-        User = cfg.username;
-
-        Environment = [
-          "NODE_ENV=production"
-          "PASEO_HOME=${paseoHome}"
-          "PASEO_LISTEN=${cfg.paseoListen}"
-          "PATH=${agentPath}"
-        ]
-        ++ cfg.extraEnvironment;
-
-        # Writable config.json (see file doc-comment).
-        ExecStartPre = [
-          "${pkgs.coreutils}/bin/rm -f ${paseoHome}/config.json"
-          "${pkgs.coreutils}/bin/install -D -m 0600 ${configJson} ${paseoHome}/config.json"
-        ];
-        ExecStart = "${cfg.paseoPackage}/bin/paseo-server";
-
-        # Clean restart — system-manager honours this raw [Service] directive.
-        "X-RestartIfChanged" = "false";
-
-        Restart = "on-failure";
-        RestartSec = 5;
-        KillSignal = "SIGTERM";
-        TimeoutStopSec = 15;
+  config = lib.mkIf cfg.enable (
+    let
+      useDynamic = cfg.paseoConfig != null;
+      genScript = agentLib.mkPaseoConfigGenScript {
+        name = "foreign";
+        inherit home;
+        uccBinDir = "${home}/.local/share/ucc/bin";
+        baseConfigFile = agentLib.mkPaseoBaseConfig {
+          name = "foreign";
+          inherit (cfg.paseoConfig) listen relay features;
+        };
+        inherit (cfg.paseoConfig) defaultLauncher providerOverrides;
       };
-    };
-  };
+    in
+    assert lib.assertMsg (useDynamic || cfg.paseoConfigFile != null)
+      "osf.paseoForeign: set either paseoConfig (dynamic) or paseoConfigFile (legacy)";
+    {
+      systemd.services.paseo = {
+        description = "Paseo - self-hosted daemon for AI coding agents";
+        after = [ "network-online.target" ]
+          ++ lib.optional useDynamic "ucc-update.service";
+        wants = [ "network-online.target" ]
+          ++ lib.optional useDynamic "ucc-update.service";
+        requires = lib.optional useDynamic "ucc-update.service";
+        wantedBy = [ "multi-user.target" ];
+
+        serviceConfig = {
+          Type = "simple";
+          User = cfg.username;
+
+          Environment = [
+            "NODE_ENV=production"
+            "PASEO_HOME=${paseoHome}"
+            "PASEO_LISTEN=${cfg.paseoListen}"
+            "PATH=${agentPath}"
+          ]
+          ++ cfg.extraEnvironment;
+
+          ExecStartPre =
+            if useDynamic then [
+              "${pkgs.coreutils}/bin/rm -f ${paseoHome}/config.json"
+              "${genScript}"
+            ] else [
+              "${pkgs.coreutils}/bin/rm -f ${paseoHome}/config.json"
+              "${pkgs.coreutils}/bin/install -D -m 0600 ${configJson} ${paseoHome}/config.json"
+            ];
+          ExecStart = "${cfg.paseoPackage}/bin/paseo-server";
+
+          # Clean restart — system-manager honours this raw [Service] directive.
+          "X-RestartIfChanged" = "false";
+
+          Restart = "on-failure";
+          RestartSec = 5;
+          KillSignal = "SIGTERM";
+          TimeoutStopSec = 15;
+        };
+      };
+    }
+  );
 }
