@@ -18,7 +18,7 @@ return {
 		end
 
 		if root then
-			ya.mgr_emit("cd", { root })
+			ya.emit("cd", { root })
 		else
 			ya.notify { title = "git-root", content = "Not inside a git repo", timeout = 3, level = "warn" }
 		end

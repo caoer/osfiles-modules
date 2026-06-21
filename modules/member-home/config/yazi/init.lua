@@ -90,24 +90,25 @@ require("zoxide"):setup {
 	update_db = true,
 }
 
+-- Git status indication is scoped to TRACKED CHANGES only — modified, added,
+-- deleted, staged/updated. Untracked, ignored, unknown, and clean files get NO
+-- sign and NO filename recolor: they're not changes git is tracking, and in a
+-- large tree they'd paint nearly every row (the "color on every file" effect).
+-- A sign of "" makes git.yazi's linemode render nothing for that code.
 th.git = th.git or {}
 th.git.modified = ui.Style():fg("blue")
 th.git.added = ui.Style():fg("green")
-th.git.untracked = ui.Style():fg("yellow")
-th.git.ignored = ui.Style():fg("#666666")
 th.git.deleted = ui.Style():fg("red"):bold()
 th.git.updated = ui.Style():fg("cyan")
-th.git.unknown = ui.Style():fg("#666666")
-th.git.clean = ui.Style():fg("green")
 
 th.git.modified_sign = "~"
 th.git.added_sign = "+"
-th.git.untracked_sign = "?"
-th.git.ignored_sign = "‒"
 th.git.deleted_sign = "✗"
 th.git.updated_sign = "↑"
-th.git.unknown_sign = "·"
-th.git.clean_sign = " "
+th.git.untracked_sign = ""
+th.git.ignored_sign = ""
+th.git.unknown_sign = ""
+th.git.clean_sign = ""
 
 local git = require("git")
 git:setup {
@@ -115,15 +116,14 @@ git:setup {
 	order = 1500,
 }
 
--- Color filenames based on git status
--- Status codes from git.yazi: ignored=6, untracked=5, modified=4, added=3, deleted=2, updated=1
+-- Recolor filenames ONLY for tracked changes. Codes from git.yazi:
+-- updated=1, deleted=2, added=3, modified=4, untracked=5, ignored=6, clean=0.
+-- 5/6/0 are intentionally absent → untracked/ignored/clean keep filetype color.
 local git_filename_styles = {
-	[6] = ui.Style():fg("#666666"),   -- ignored
-	[5] = ui.Style():fg("#f9e2af"),   -- untracked (yellow)
 	[4] = ui.Style():fg("#89b4fa"),   -- modified (blue)
 	[3] = ui.Style():fg("#a6e3a1"),   -- added (green)
 	[2] = ui.Style():fg("#f38ba8"),   -- deleted (red)
-	[1] = ui.Style():fg("#94e2d5"),   -- updated (cyan)
+	[1] = ui.Style():fg("#94e2d5"),   -- updated/staged (cyan)
 }
 
 local entity_style = Entity.style

@@ -12,12 +12,23 @@ local M = {}
 -- which hangs on MP4s whose moov atom sits at end-of-file. /run/current-system/sw/bin
 -- is present on nix-darwin/NixOS; foreign hosts (cos-ucc) provide full ffmpeg on
 -- PATH via home.packages instead — fall back to bare name there.
+--
+-- fs.cha yields, so it may only run inside a coroutine (peek/preload/seek), never
+-- the main chunk. Resolve lazily on first use and memoize per binary.
+local bin_cache = {}
 local function sysbin(name)
-	local sys = "/run/current-system/sw/bin/" .. name
-	return fs.cha(Url(sys)) and sys or name
+	if bin_cache[name] == nil then
+		local sys = "/run/current-system/sw/bin/" .. name
+		bin_cache[name] = (fs.cha(Url(sys)) and sys) or name
+	end
+	return bin_cache[name]
 end
-local FFPROBE = sysbin("ffprobe")
-local FFMPEG = sysbin("ffmpeg")
+local function ffprobe()
+	return sysbin("ffprobe")
+end
+local function ffmpeg()
+	return sysbin("ffmpeg")
+end
 
 -- Grid layouts indexed by skip value
 local GRIDS = {
@@ -41,7 +52,7 @@ local function fail(job, msg)
 end
 
 local function probe_duration(url)
-	local child = Command(FFPROBE)
+	local child = Command(ffprobe())
 		:arg({
 			"-v", "error",
 			"-show_entries", "format=duration",
@@ -62,7 +73,7 @@ local function probe_duration(url)
 end
 
 local function run_ffmpeg(args)
-	local child = Command(FFMPEG):arg(args):stdout(Command.NULL):stderr(Command.PIPED):spawn()
+	local child = Command(ffmpeg()):arg(args):stdout(Command.NULL):stderr(Command.PIPED):spawn()
 	if not child then
 		return false, "spawn failed"
 	end
@@ -156,7 +167,7 @@ function M:seek(job)
 		local skip = cx.active.preview.skip
 		local new_skip = math.max(0, math.min(skip + job.units, #GRIDS - 1))
 		if new_skip ~= skip then
-			ya.mgr_emit("peek", { new_skip, only_if = job.file.url })
+			ya.emit("peek", { new_skip, only_if = job.file.url })
 		end
 	end
 end

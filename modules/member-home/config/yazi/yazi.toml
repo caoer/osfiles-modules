@@ -26,7 +26,9 @@ open = [
 log = [{ run = 'lnav "$@"', block = true }]
 # macOS-only: headless Linux has no mpv/display — video/audio rules fall
 # through to the next opener instead of erroring.
-play = [{ run = 'mpv "$@"', block = true, desc = "Play with mpv", for = "macos" }]
+play = [
+  { run = 'mpv "$@"', block = true, desc = "Play with mpv", for = "macos" },
+]
 
 [open]
 rules = [
@@ -95,10 +97,25 @@ rules = [
   { url = "*.yml", use = [
     "edit",
   ] },
+  { url = "*.dconf", use = [
+    "edit",
+  ] },
   { url = "*.lua", use = [
     "edit",
   ] },
   { url = "*.json", use = [
+    "edit",
+  ] },
+  { url = "*.md", use = [
+    "edit",
+  ] },
+  { url = "*.markdown", use = [
+    "edit",
+  ] },
+  { url = "*.txt", use = [
+    "edit",
+  ] },
+  { url = "*.toml", use = [
     "edit",
   ] },
   { url = "*", use = [
@@ -137,17 +154,17 @@ prepend_preloaders = [
 ]
 
 [[plugin.prepend_fetchers]]
-id = "git"
+group = "git"
 url = "*"
 run = "git"
 
 [[plugin.prepend_fetchers]]
-id = "git"
+group = "git"
 url = "*/"
 run = "git"
 
 # Async immediate-child counter feeding the "count" linemode (directories only).
 [[plugin.prepend_fetchers]]
-id = "count"
+group = "count"
 url = "*/"
 run = "count"

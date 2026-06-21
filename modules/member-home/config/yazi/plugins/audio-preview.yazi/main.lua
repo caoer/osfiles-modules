@@ -8,12 +8,23 @@ local M = {}
 -- which hangs on some media. /run/current-system/sw/bin is present on
 -- nix-darwin/NixOS; foreign hosts (cos-ucc) provide full ffmpeg on PATH via
 -- home.packages instead — fall back to bare name there.
+--
+-- fs.cha yields, so it may only run inside a coroutine (peek/preload/seek), never
+-- the main chunk. Resolve lazily on first use and memoize per binary.
+local bin_cache = {}
 local function sysbin(name)
-	local sys = "/run/current-system/sw/bin/" .. name
-	return fs.cha(Url(sys)) and sys or name
+	if bin_cache[name] == nil then
+		local sys = "/run/current-system/sw/bin/" .. name
+		bin_cache[name] = (fs.cha(Url(sys)) and sys) or name
+	end
+	return bin_cache[name]
 end
-local FFPROBE = sysbin("ffprobe")
-local FFMPEG = sysbin("ffmpeg")
+local function ffprobe()
+	return sysbin("ffprobe")
+end
+local function ffmpeg()
+	return sysbin("ffmpeg")
+end
 
 local function cache_path(job)
 	local base = ya.file_cache(job)
@@ -29,7 +40,7 @@ end
 
 -- Extract embedded album art (copies the attached cover stream as an image).
 local function extract_cover(input, output)
-	local child = Command(FFMPEG)
+	local child = Command(ffmpeg())
 		:arg({
 			"-v", "error",
 			"-i", tostring(input),
@@ -55,7 +66,7 @@ local function generate_waveform(input, output, w, h)
 	local ph = math.max(h * 16, 200)
 	local size = string.format("%dx%d", pw, ph)
 
-	local child = Command(FFMPEG)
+	local child = Command(ffmpeg())
 		:arg({
 			"-v", "error",
 			"-i", tostring(input),
@@ -114,7 +125,7 @@ function M:peek(job)
 	if not fs.cha(cache) then
 		if not self:preload(job) then
 			-- Last resort: show metadata as text.
-			local child = Command(FFPROBE)
+			local child = Command(ffprobe())
 				:arg({
 					"-v", "error",
 					"-show_entries", "format=duration,bit_rate:format_tags=title,artist,album",
@@ -142,7 +153,7 @@ function M:seek(job)
 	if h and h.url == job.file.url then
 		local skip = cx.active.preview.skip
 		local new_skip = skip == 0 and 1 or 0
-		ya.mgr_emit("peek", { new_skip, only_if = job.file.url })
+		ya.emit("peek", { new_skip, only_if = job.file.url })
 	end
 end
 

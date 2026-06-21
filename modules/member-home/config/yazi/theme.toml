@@ -125,10 +125,21 @@ footer  = { fg = "#45475a", bg = "#cdd6f4" }
 [filetype]
 
 rules = [
+	# Content-type (mime) coloring ONLY. These match identically across yazi
+	# versions and color by what a file *is*, not its name.
+	#
+	# Filename / extension / directory coloring was deliberately removed: yazi
+	# 26.1.22 silently ignored those rules (they used the old `name=` matcher),
+	# so the file list showed filetype color on icons + git status on names only.
+	# The 26.5.6 migration rewrote `name=` → `url=` (#3034), which ACTIVATED all
+	# ~40 dormant rules at once and painted every row — the "wrong color" since
+	# the upgrade. Git status (init.lua Entity:style) remains the only source of
+	# filename recoloring, matching the pre-upgrade look.
+
 	# Images
 	{ mime = "image/*", fg = "#94e2d5" },
 
-	# Videos
+	# Videos / audio
 	{ mime = "video/*", fg = "#f9e2af" },
 	{ mime = "audio/*", fg = "#f9e2af" },
 
@@ -143,155 +154,95 @@ rules = [
 
 	# Documents
 	{ mime = "application/pdf", fg = "#f38ba8" },
-
-	# Empty files
-	{ name = "*", is = "orphan", fg = "#6c7086" },
-	{ name = "*", is = "exec"  , fg = "#a6e3a1" },
-
-	# Special files
-	{ name = "*/", fg = "#89b4fa" },                # Directories
-
-	# Dotfiles
-	{ name = ".*", fg = "#6c7086" },
-
-	# Nix files
-	{ name = "*.nix", fg = "#89dceb" },
-	{ name = "flake.nix", fg = "#89dceb" },
-	{ name = "flake.lock", fg = "#6c7086" },
-
-	# Configuration files
-	{ name = "*.toml", fg = "#fab387" },
-	{ name = "*.yaml", fg = "#fab387" },
-	{ name = "*.yml", fg = "#fab387" },
-	{ name = "*.json", fg = "#f9e2af" },
-
-	# Code files
-	{ name = "*.rs", fg = "#fab387" },
-	{ name = "*.go", fg = "#74c7ec" },
-	{ name = "*.py", fg = "#f9e2af" },
-	{ name = "*.js", fg = "#f9e2af" },
-	{ name = "*.ts", fg = "#89b4fa" },
-	{ name = "*.jsx", fg = "#74c7ec" },
-	{ name = "*.tsx", fg = "#74c7ec" },
-
-	# Text files
-	{ name = "*.md", fg = "#cdd6f4" },
-	{ name = "*.txt", fg = "#cdd6f4" },
-
-	# Git
-	{ name = ".gitignore", fg = "#fab387" },
-	{ name = ".gitconfig", fg = "#fab387" },
-
-	# Logs
-	{ name = "*.log", fg = "#f38ba8" },
 ]
 
-[icons]
-"Desktop/"     = ""
-"Documents/"   = "󰈙"
-"Downloads/"   = ""
-"Pictures/"    = ""
-"Music/"       = ""
-"Movies/"      = ""
-"Videos/"      = ""
-"Public/"      = ""
-"Library/"     = ""
-"Applications/" = ""
 
-# Default
-"*"  = "󰈔"
-"*/" = ""
+[icon]
+# User additions layered over yazi's built-in preset icons (prepend_*).
+# Wildcard fallbacks (default file/dir, dotfiles) come from the preset.
 
-# Dotfiles
-".*" = "󰘓"
+prepend_dirs = [
+	{ name = "Desktop", text = "" },
+	{ name = "Documents", text = "󰈙" },
+	{ name = "Downloads", text = "" },
+	{ name = "Pictures", text = "" },
+	{ name = "Music", text = "" },
+	{ name = "Movies", text = "" },
+	{ name = "Videos", text = "" },
+	{ name = "Public", text = "" },
+	{ name = "Library", text = "" },
+	{ name = "Applications", text = "" },
+]
 
-# Languages
-"*.rs"   = ""
-"*.go"   = ""
-"*.py"   = ""
-"*.js"   = ""
-"*.ts"   = ""
-"*.jsx"  = ""
-"*.tsx"  = ""
-"*.java" = ""
-"*.c"    = ""
-"*.cpp"  = ""
-"*.h"    = ""
-"*.hpp"  = ""
+prepend_files = [
+	{ name = "flake.nix", text = "" },
+	{ name = "flake.lock", text = "" },
+	{ name = ".gitignore", text = "" },
+	{ name = ".gitconfig", text = "" },
+	{ name = "LICENSE", text = "" },
+	{ name = "README", text = "" },
+	{ name = "README.md", text = "" },
+	{ name = "Makefile", text = "" },
+	{ name = "Dockerfile", text = "" },
+]
 
-# Web
-"*.html" = ""
-"*.css"  = ""
-"*.scss" = ""
-"*.sass" = ""
-
-# Config
-"*.json"  = ""
-"*.yaml"  = ""
-"*.yml"   = ""
-"*.toml"  = ""
-"*.ini"   = ""
-"*.conf"  = ""
-"*.config" = ""
-
-# Nix
-"*.nix"      = ""
-"flake.nix"  = ""
-"flake.lock" = ""
-
-# Text
-"*.md"  = ""
-"*.txt" = "󰈙"
-"*.rtf" = ""
-
-# Archives
-"*.zip" = ""
-"*.tar" = ""
-"*.gz"  = ""
-"*.7z"  = ""
-"*.rar" = ""
-
-# Images  
-"*.png"  = ""
-"*.jpg"  = ""
-"*.jpeg" = ""
-"*.gif"  = ""
-"*.webp" = ""
-"*.svg"  = ""
-"*.ico"  = ""
-
-# Videos
-"*.mp4"  = ""
-"*.mkv"  = ""
-"*.avi"  = ""
-"*.mov"  = ""
-"*.wmv"  = ""
-"*.webm" = ""
-
-# Audio
-"*.mp3"  = ""
-"*.flac" = ""
-"*.wav"  = ""
-"*.aac"  = ""
-
-# Documents
-"*.pdf"  = ""
-"*.doc"  = ""
-"*.docx" = ""
-"*.xls"  = ""
-"*.xlsx" = ""
-"*.ppt"  = ""
-"*.pptx" = ""
-
-# Git
-".gitignore" = ""
-".gitconfig" = ""
-
-# Others
-"LICENSE" = ""
-"README"  = ""
-"README.md" = ""
-"Makefile" = ""
-"Dockerfile" = ""
+prepend_exts = [
+	{ name = "rs", text = "" },
+	{ name = "go", text = "" },
+	{ name = "py", text = "" },
+	{ name = "js", text = "" },
+	{ name = "ts", text = "" },
+	{ name = "jsx", text = "" },
+	{ name = "tsx", text = "" },
+	{ name = "java", text = "" },
+	{ name = "c", text = "" },
+	{ name = "cpp", text = "" },
+	{ name = "h", text = "" },
+	{ name = "hpp", text = "" },
+	{ name = "html", text = "" },
+	{ name = "css", text = "" },
+	{ name = "scss", text = "" },
+	{ name = "sass", text = "" },
+	{ name = "json", text = "" },
+	{ name = "yaml", text = "" },
+	{ name = "yml", text = "" },
+	{ name = "toml", text = "" },
+	{ name = "ini", text = "" },
+	{ name = "conf", text = "" },
+	{ name = "config", text = "" },
+	{ name = "nix", text = "" },
+	{ name = "md", text = "" },
+	{ name = "txt", text = "󰈙" },
+	{ name = "rtf", text = "" },
+	{ name = "zip", text = "" },
+	{ name = "tar", text = "" },
+	{ name = "gz", text = "" },
+	{ name = "7z", text = "" },
+	{ name = "rar", text = "" },
+	{ name = "png", text = "" },
+	{ name = "jpg", text = "" },
+	{ name = "jpeg", text = "" },
+	{ name = "gif", text = "" },
+	{ name = "webp", text = "" },
+	{ name = "svg", text = "" },
+	{ name = "ico", text = "" },
+	{ name = "mp4", text = "" },
+	{ name = "mkv", text = "" },
+	{ name = "avi", text = "" },
+	{ name = "mov", text = "" },
+	{ name = "wmv", text = "" },
+	{ name = "webm", text = "" },
+	{ name = "mp3", text = "" },
+	{ name = "flac", text = "" },
+	{ name = "wav", text = "" },
+	{ name = "aac", text = "" },
+	{ name = "pdf", text = "" },
+	{ name = "doc", text = "" },
+	{ name = "docx", text = "" },
+	{ name = "xls", text = "" },
+	{ name = "xlsx", text = "" },
+	{ name = "ppt", text = "" },
+	{ name = "pptx", text = "" },
+]
 
 # : }}}

@@ -12,9 +12,9 @@ end)
 return {
 	entry = function()
 		if check() then
-			ya.mgr_emit("enter", {})
+			ya.emit("enter", {})
 		else
-			ya.mgr_emit("open", {})
+			ya.emit("open", {})
 		end
 	end,
 }
