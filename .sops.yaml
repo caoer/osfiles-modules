@@ -21,6 +21,7 @@ keys:
   - &zt_agent_v2  age1ju89faen0j9jz7stqkgz7r2ek86dk0zzgj2hpnvr6yr5eg9pmawshqkgq5
   - &xiaobai_lax  age1yp8azdf09u37cgy9y8prwed25uhte6u085jn0s4xx44s5qldrvtsq9puzs
   - &yangming     age1grthh353hvwen3mmktt7w2v4puzt2ep7gwfeenh5weuq3wvr4qgqxrlxsp
+  - &zt_lax       age182wxn7gf0kwxq6jrdtr2jx4rykqz5x2k2cs869hzs9x5zzvxffyswwxady
 
 creation_rules:
   - path_regex: secrets/.*\.yaml$
@@ -30,3 +31,4 @@ creation_rules:
           - *zt_agent_v2
           - *xiaobai_lax
           - *yangming
+          - *zt_lax
