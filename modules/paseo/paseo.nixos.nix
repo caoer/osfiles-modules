@@ -250,8 +250,9 @@ in
           ExecStartPre =
             # Password env file — rendered as root (+ prefix) before the daemon
             # starts, so sops secrets (typically root:root 0400) are readable.
-            # systemd loads EnvironmentFile before ExecStart → PASEO_PASSWORD is
-            # set in the daemon's environment; the daemon bcrypt-hashes it at boot.
+            # Creates /run/paseo-env-<user> which EnvironmentFile loads for
+            # ExecStart. The EnvironmentFile uses "-" prefix so this script can
+            # run before the file exists (systemd validates per-spawn).
             lib.optional (ucfg.passwordFile != null)
               "+${pkgs.writeShellScript "paseo-password-env-${name}" ''
                 printf 'PASEO_PASSWORD=%s\n' "$(cat ${ucfg.passwordFile})" > /run/paseo-env-${name}
@@ -278,7 +279,12 @@ in
           TimeoutStopSec = 15;
         }
         // lib.optionalAttrs (ucfg.passwordFile != null) {
-          EnvironmentFile = [ "/run/paseo-env-${name}" ];
+          # Dash prefix: EnvironmentFile is validated per-spawn (incl. ExecStartPre).
+          # Without "-", the password-env ExecStartPre (which CREATES the file)
+          # itself fails because the file doesn't exist yet. With "-", the first
+          # spawn silently skips the missing file, the +root script creates it,
+          # and ExecStart's spawn reads it successfully.
+          EnvironmentFile = [ "-/run/paseo-env-${name}" ];
         };
       }
     ) paseoUsers;
