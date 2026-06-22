@@ -165,6 +165,8 @@ in
         for wrapper in "$UCC_BIN"/ucc-*; do
           [ -x "$wrapper" ] || continue
           wname="''${wrapper##*/ucc-}"
+          # Sanitize: paseo requires provider IDs matching /^[a-z][a-z0-9-]*$/
+          wname=$(echo "$wname" | ${pkgs.coreutils}/bin/tr '_' '-')
 
           # Skip built-ins and the default launcher itself
           case "$wname" in
