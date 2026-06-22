@@ -136,6 +136,17 @@ in
       description = "PASEO_LISTEN for the daemon (loopback by default — no daemon password needed).";
     };
 
+    passwordFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      description = ''
+        Path to a file containing the plaintext paseo daemon password (e.g.
+        a sops-nix or foreign.secrets path). Sets PASEO_PASSWORD env at daemon
+        start — the daemon bcrypt-hashes it on boot. Required when listen is
+        non-loopback.
+      '';
+    };
+
     extraEnvironment = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
@@ -187,13 +198,23 @@ in
           ++ cfg.extraEnvironment;
 
           ExecStartPre =
-            if useDynamic then [
+            # Password env file — rendered as root (+ prefix) so sops/foreign
+            # secrets (typically root:root 0400) are readable. systemd loads
+            # EnvironmentFile before ExecStart → PASEO_PASSWORD set in daemon env.
+            lib.optional (cfg.passwordFile != null)
+              "+${pkgs.writeShellScript "paseo-password-env-foreign" ''
+                printf 'PASEO_PASSWORD=%s\n' "$(cat ${cfg.passwordFile})" > /run/paseo-env-foreign
+                chmod 600 /run/paseo-env-foreign
+                chown ${cfg.username}: /run/paseo-env-foreign
+              ''}"
+            ++
+            (if useDynamic then [
               "${pkgs.coreutils}/bin/rm -f ${paseoHome}/config.json"
               "${genScript}"
             ] else [
               "${pkgs.coreutils}/bin/rm -f ${paseoHome}/config.json"
               "${pkgs.coreutils}/bin/install -D -m 0600 ${configJson} ${paseoHome}/config.json"
-            ];
+            ]);
           ExecStart = "${cfg.paseoPackage}/bin/paseo-server";
 
           # Clean restart — system-manager honours this raw [Service] directive.
@@ -203,6 +224,9 @@ in
           RestartSec = 5;
           KillSignal = "SIGTERM";
           TimeoutStopSec = 15;
+        }
+        // lib.optionalAttrs (cfg.passwordFile != null) {
+          EnvironmentFile = [ "/run/paseo-env-foreign" ];
         };
       };
     }

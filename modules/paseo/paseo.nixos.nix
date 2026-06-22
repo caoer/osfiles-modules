@@ -109,6 +109,16 @@ let
           down by ucc-update, which syncs from the worker DO).
         '';
       };
+      passwordFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        description = ''
+          Path to a file containing the plaintext paseo daemon password (e.g.
+          a sops-nix secret path). Sets PASEO_PASSWORD env at daemon start —
+          the daemon bcrypt-hashes it on boot. Required when listen is non-loopback.
+        '';
+      };
+
       environment = lib.mkOption {
         type = lib.types.attrsOf lib.types.str;
         default = { };
@@ -238,7 +248,18 @@ in
           User = name;
 
           ExecStartPre =
-            if useDynamic then [
+            # Password env file — rendered as root (+ prefix) before the daemon
+            # starts, so sops secrets (typically root:root 0400) are readable.
+            # systemd loads EnvironmentFile before ExecStart → PASEO_PASSWORD is
+            # set in the daemon's environment; the daemon bcrypt-hashes it at boot.
+            lib.optional (ucfg.passwordFile != null)
+              "+${pkgs.writeShellScript "paseo-password-env-${name}" ''
+                printf 'PASEO_PASSWORD=%s\n' "$(cat ${ucfg.passwordFile})" > /run/paseo-env-${name}
+                chmod 600 /run/paseo-env-${name}
+                chown ${name}: /run/paseo-env-${name}
+              ''}"
+            ++
+            (if useDynamic then [
               # Dynamic: gen script scans wrappers → builds providers → writes config.json
               "${pkgs.coreutils}/bin/rm -f ${paseoHome}/config.json"
               "${genScript}"
@@ -246,7 +267,7 @@ in
               # Legacy: writable copy from the store-rendered static config.
               "${pkgs.coreutils}/bin/rm -f ${paseoHome}/config.json"
               "${pkgs.coreutils}/bin/install -D -m 0600 ${configJson} ${paseoHome}/config.json"
-            ];
+            ]);
           ExecStart = "${paseoPkg}/bin/paseo-server";
 
           Restart = "on-failure";
@@ -255,6 +276,9 @@ in
           # Graceful shutdown (server handles SIGTERM with a 10s timeout)
           KillSignal = "SIGTERM";
           TimeoutStopSec = 15;
+        }
+        // lib.optionalAttrs (ucfg.passwordFile != null) {
+          EnvironmentFile = [ "/run/paseo-env-${name}" ];
         };
       }
     ) paseoUsers;
