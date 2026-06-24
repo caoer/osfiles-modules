@@ -121,6 +121,16 @@ in
             default = { };
             description = "Per-provider overrides deep-merged onto discovered providers.";
           };
+          profilePresets = lib.mkOption {
+            type = lib.types.attrsOf lib.types.str;
+            default = { };
+            example = { zai = "glm"; qwen = "qwen"; };
+            description = ''
+              Maps discovered profile names to model presets (agentLib.modelPresets).
+              When ucc-<name> is discovered and <name> has a preset, the preset's
+              model catalog (models, label, disallowedTools) is merged in.
+            '';
+          };
         };
       });
       default = null;
@@ -170,7 +180,7 @@ in
           name = "foreign";
           inherit (cfg.paseoConfig) listen relay features;
         };
-        inherit (cfg.paseoConfig) defaultLauncher providerOverrides;
+        inherit (cfg.paseoConfig) defaultLauncher providerOverrides profilePresets;
       };
     in
     assert lib.assertMsg (useDynamic || cfg.paseoConfigFile != null)

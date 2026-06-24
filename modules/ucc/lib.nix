@@ -7,8 +7,35 @@
 { pkgs }:
 let
   installerBaseUrl = "https://get-ucc.sui.pics/installer";
+
+  # Model presets — catalogs of known third-party providers that expose
+  # Anthropic-compatible APIs. Presets carry the model list + display metadata;
+  # credentials and API endpoints live in the ucc-* wrapper (managed by the
+  # UCC installer, not by Nix).
+  modelPresets = {
+    glm = {
+      label = "ZAI (GLM)";
+      disallowedTools = [ "WebSearch" ];
+      models = [
+        { id = "glm-5-turbo"; label = "GLM 5 Turbo"; }
+        { id = "glm-5v-turbo"; label = "GLM 5V Turbo"; }
+        { id = "glm-5.1"; label = "GLM 5.1"; }
+        { id = "glm-5.2"; label = "GLM 5.2"; isDefault = true; }
+      ];
+    };
+    qwen = {
+      label = "Qwen (Alibaba)";
+      disallowedTools = [ "WebSearch" ];
+      models = [
+        { id = "qwen3.5-plus"; label = "Qwen 3.5 Plus"; isDefault = true; }
+        { id = "qwen3-coder-next"; label = "Qwen 3 Coder Next"; }
+      ];
+    };
+  };
 in
 {
+  inherit modelPresets;
+
   # Fleet-wide central default ccc-statusd version. Both module paths (NixOS +
   # Foreign) default osf.{ucc,uccForeign}.uccVersion to this — ONE bump moves the
   # whole fleet. Override per-host via the option.
@@ -135,11 +162,14 @@ in
       baseConfigFile,
       defaultLauncher ? null, # null = "ucc-auto"; string = profile name e.g. "opus48"
       providerOverrides ? { }, # deep-merged into discovered providers
+      profilePresets ? { }, # profile name → preset name (from modelPresets)
     }:
     let
       launcher = if defaultLauncher == null then "ucc-auto" else "ucc-${defaultLauncher}";
       launcherName = if defaultLauncher == null then "auto" else defaultLauncher;
       overridesJson = builtins.toJSON providerOverrides;
+      resolvedPresets = builtins.mapAttrs (_: presetName: modelPresets.${presetName}) profilePresets;
+      resolvedPresetsJson = builtins.toJSON resolvedPresets;
       paseoHome = "${home}/.paseo";
     in
     pkgs.writeShellScript "paseo-gen-config-${name}" ''
@@ -191,6 +221,16 @@ in
         "opencode": { "enabled": false },
         "pi": { "enabled": false }
       }')
+
+      # Apply model presets to matching discovered profiles
+      PRESETS='${resolvedPresetsJson}'
+      if [ "$PRESETS" != "{}" ]; then
+        PROVIDERS=$(echo "$PROVIDERS" | ${pkgs.jq}/bin/jq --argjson presets "$PRESETS" '
+          . as $base | $presets | to_entries | reduce .[] as $e ($base;
+            if .[$e.key] then .[$e.key] = (.[$e.key] * $e.value)
+            else . end
+          )')
+      fi
 
       # Apply per-provider overrides (deep merge)
       OVERRIDES='${overridesJson}'

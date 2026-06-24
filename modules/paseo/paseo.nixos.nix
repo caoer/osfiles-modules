@@ -99,6 +99,16 @@ let
                 provider the scan would otherwise skip.
               '';
             };
+            profilePresets = lib.mkOption {
+              type = lib.types.attrsOf lib.types.str;
+              default = { };
+              example = { zai = "glm"; qwen = "qwen"; };
+              description = ''
+                Maps discovered profile names to model presets (agentLib.modelPresets).
+                When ucc-<name> is discovered and <name> has a preset, the preset's
+                model catalog (models, label, disallowedTools) is merged in.
+              '';
+            };
           };
         });
         default = null;
@@ -171,7 +181,7 @@ let
     in
     agentLib.mkPaseoConfigGenScript {
       inherit name home uccBinDir baseConfigFile;
-      inherit (pcfg) defaultLauncher providerOverrides;
+      inherit (pcfg) defaultLauncher providerOverrides profilePresets;
     };
 in
 {
