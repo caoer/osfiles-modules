@@ -98,6 +98,18 @@
       # Re-exported packages: paseo (central pin), codex (ahead of nixpkgs),
       # paseo-speech (speech-worker-trace patch). Consumers reference these
       # instead of carrying their own paseo input.
+      # Shared lib — importable by consumers.
+      lib = {
+        mkSingBoxService = import ./lib/mkSingBoxService.nix;
+      };
+
+      # Overlay: adds metacubexd, mosdns, watchdog to pkgs.
+      overlays.default = final: prev: {
+        metacubexd = final.callPackage ./packages/metacubexd.nix { };
+        mosdns = final.callPackage ./packages/mosdns.nix { };
+        watchdog = final.callPackage ./packages/watchdog.nix { };
+      };
+
       packages = forAllSystems (
         system:
         let
@@ -110,6 +122,9 @@
         }
         // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
           codex = pkgs.callPackage ./packages/codex.nix { };
+          metacubexd = pkgs.callPackage ./packages/metacubexd.nix { };
+          mosdns = pkgs.callPackage ./packages/mosdns.nix { };
+          watchdog = pkgs.callPackage ./packages/watchdog.nix { };
           paseo-speech = paseoPkg.overrideAttrs (old: {
             patches = (old.patches or [ ]) ++ [ ./packages/paseo-speech-worker-trace.patch ];
           });
