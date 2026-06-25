@@ -22,6 +22,7 @@ keys:
   - &xiaobai_lax  age1yp8azdf09u37cgy9y8prwed25uhte6u085jn0s4xx44s5qldrvtsq9puzs
   - &yangming     age1grthh353hvwen3mmktt7w2v4puzt2ep7gwfeenh5weuq3wvr4qgqxrlxsp
   - &zt_lax       age182wxn7gf0kwxq6jrdtr2jx4rykqz5x2k2cs869hzs9x5zzvxffyswwxady
+  - &cos_stex_builder age19fmutc3a4pypasypaplwte4jte2zk9j0n8zey93c5dqsdzshc9pqt67p25
 
 creation_rules:
   - path_regex: secrets/.*\.yaml$
@@ -32,3 +33,4 @@ creation_rules:
           - *xiaobai_lax
           - *yangming
           - *zt_lax
+          - *cos_stex_builder
