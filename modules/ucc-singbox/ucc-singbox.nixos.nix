@@ -108,7 +108,7 @@ in
 
     apiUrl = lib.mkOption {
       type = lib.types.str;
-      default = "https://network.0xdao.app";
+      default = "https://network.sui.pics";
       description = "mesh-network API base URL.";
     };
 
