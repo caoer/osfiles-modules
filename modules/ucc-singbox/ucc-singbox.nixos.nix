@@ -71,6 +71,14 @@ let
     }
     ${lib.optionalString (cfg.extraQueryParams != "") ''url="$url&${cfg.extraQueryParams}"''}
 
+    ${lib.optionalString (cfg.bootstrapGateway != "") ''
+      # Kill-switch bootstrap: temporarily add a default route to reach the API.
+      # Removed after fetch, before sing-box starts (sing-box manages its own routes).
+      echo "${serviceName}: adding bootstrap route via ${cfg.bootstrapGateway}"
+      ${pkgs.iproute2}/bin/ip route add default via ${cfg.bootstrapGateway} metric 9999 2>/dev/null || true
+      trap '${pkgs.iproute2}/bin/ip route del default via ${cfg.bootstrapGateway} metric 9999 2>/dev/null || true' EXIT
+    ''}
+
     echo "${serviceName}: fetching config from API (preset=${cfg.preset})"
     raw=$(${pkgs.curl}/bin/curl -fsSL --max-time 30 "$url")
 
@@ -151,6 +159,18 @@ in
         "ipv6"
       ];
       description = "API feature flags (CSV). 'ucc' is required; add 'ipv6', 'emoji' as needed.";
+    };
+
+    bootstrapGateway = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      example = "172.19.0.1";
+      description = ''
+        LAN gateway IP for bootstrapping the API fetch on kill-switch hosts.
+        When set, the fetch script temporarily adds a default route via this
+        gateway, fetches the config, then removes it. Required when the host
+        has no default route (tun-us-strict kill-switch pattern).
+      '';
     };
 
     extraQueryParams = lib.mkOption {
