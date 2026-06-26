@@ -189,18 +189,10 @@ in
       serviceConfig = {
         ExecStartPre = fetchScript;
         ExecStart = "${singboxPkg}/bin/sing-box -D /var/lib/${serviceName} run -c ${runtimeConfig}";
-        AmbientCapabilities = [
-          "CAP_NET_ADMIN"
-          "CAP_NET_BIND_SERVICE"
-          # Required for process_path_regex routing: readlink(/proc/<pid>/exe)
-          # for other users' processes needs CAP_SYS_PTRACE since Linux 4.12.
-          "CAP_SYS_PTRACE"
-        ];
-        CapabilityBoundingSet = [
-          "CAP_NET_ADMIN"
-          "CAP_NET_BIND_SERVICE"
-          "CAP_SYS_PTRACE"
-        ];
+        # No CapabilityBoundingSet — process_path_regex routing needs broad
+        # /proc access (readlink exe, list fd, netlink INET_DIAG) that fails
+        # under restrictive capability sets. The service already runs as root
+        # with NET_ADMIN; restricting further breaks process matching silently.
         Restart = "on-failure";
         RestartSec = 10;
         RuntimeDirectory = serviceName;
