@@ -183,6 +183,7 @@ in
         options = {
           server = lib.mkOption {
             type = lib.types.str;
+            default = "";
             example = "172.19.0.43";
             description = "LAN proxy server IP.";
           };
@@ -198,6 +199,7 @@ in
           };
           passwordSecret = lib.mkOption {
             type = lib.types.str;
+            default = "";
             description = "sops secret name holding the Shadowsocks password.";
           };
         };
@@ -245,16 +247,16 @@ in
   config = lib.mkIf cfg.enable {
     assertions = [
       {
-        assertion = !isStrict || (cfg.lanProxy.server or "" != "");
-        message = "osf.uccSingbox: preset 'tun-us-strict' requires lanProxy to be configured.";
+        assertion = !isStrict || (cfg.lanProxy ? server && cfg.lanProxy.server != "");
+        message = "osf.uccSingbox: preset 'tun-us-strict' requires lanProxy.server to be configured.";
       }
     ];
 
     environment.systemPackages = [ singboxPkg ];
 
-    sops.secrets.${cfg.tokenSecret} = { };
-    # LAN proxy password secret (only when strict mode).
-    sops.secrets = lib.mkIf isStrict {
+    sops.secrets = {
+      ${cfg.tokenSecret} = { };
+    } // lib.optionalAttrs isStrict {
       ${cfg.lanProxy.passwordSecret} = { };
     };
 
