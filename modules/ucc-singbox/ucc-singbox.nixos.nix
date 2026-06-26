@@ -77,12 +77,20 @@ let
     }
 
     # Post-process:
-    # - Add include_uid to TUN inbound (scope to target user)
+    # - Root (uid 0): omit include_uid so TUN captures ALL users' traffic
+    # - Non-root: add include_uid to scope TUN to that user only
     # - Enable auto_redirect on Linux TUN
-    echo "$raw" | ${pkgs.jq}/bin/jq --argjson uid "$target_uid" '
-      (.inbounds // [] | .[] | select(.type == "tun"))
-        |= (.include_uid = [$uid] | .auto_redirect = true)
-    ' > ${runtimeConfig}
+    if [ "$target_uid" = "0" ]; then
+      echo "$raw" | ${pkgs.jq}/bin/jq '
+        (.inbounds // [] | .[] | select(.type == "tun"))
+          |= (.auto_redirect = true)
+      ' > ${runtimeConfig}
+    else
+      echo "$raw" | ${pkgs.jq}/bin/jq --argjson uid "$target_uid" '
+        (.inbounds // [] | .[] | select(.type == "tun"))
+          |= (.include_uid = [$uid] | .auto_redirect = true)
+      ' > ${runtimeConfig}
+    fi
 
     ${singboxPkg}/bin/sing-box check -c ${runtimeConfig}
 
