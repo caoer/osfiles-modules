@@ -63,7 +63,7 @@ let
 
     target_uid="$(${pkgs.coreutils}/bin/id -u ${cfg.user})"
 
-    url="${cfg.apiUrl}/config/$token?type=singbox&features=ucc&preset=${cfg.preset}&env.HOME=${userHome}"
+    url="${cfg.apiUrl}/config/$token?type=singbox&features=ucc&preset=${cfg.preset}&port=-1&env.HOME=${userHome}"
     ${lib.optionalString (cfg.extraQueryParams != "") ''url="$url&${cfg.extraQueryParams}"''}
 
     echo "${serviceName}: fetching config from API (preset=${cfg.preset})"
