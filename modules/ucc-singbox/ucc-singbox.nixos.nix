@@ -63,7 +63,12 @@ let
 
     target_uid="$(${pkgs.coreutils}/bin/id -u ${cfg.user})"
 
-    url="${cfg.apiUrl}/config/$token?type=singbox&features=${lib.concatStringsSep "," cfg.features}&preset=${cfg.preset}&port=-1&env.HOME=${userHome}"
+    url="${cfg.apiUrl}/config/$token?type=singbox&features=${lib.concatStringsSep "," cfg.features}&preset=${cfg.preset}&env.HOME=${userHome}"
+    ${
+      # Direct presets (tun-us): port=-1 drops the relay server pool — UCC exits only.
+      # Strict/relay presets need the server pool populated.
+      lib.optionalString (cfg.preset == "tun-us") ''url="$url&port=-1"''
+    }
     ${lib.optionalString (cfg.extraQueryParams != "") ''url="$url&${cfg.extraQueryParams}"''}
 
     echo "${serviceName}: fetching config from API (preset=${cfg.preset})"
@@ -132,9 +137,10 @@ in
       default = "tun-us";
       description = ''
         API preset name. Determines routing topology:
-          tun-us       — direct: TUN, UCC-only proxy, rest DIRECT (US hosts)
-          tun-cn       — relay: TUN, full geo routing + UCC relay chain (CN hosts)
-          ucc-minimal  — mixed inbound only, no TUN (lightweight)
+          tun-us        — direct: TUN, UCC-only proxy, rest DIRECT (ZT's own boxes)
+          tun-us-strict — relay: TUN, ALL traffic through relay, kill-switch (guest VMs)
+          tun-cn        — relay: TUN, full geo routing + UCC relay chain (CN hosts)
+          ucc-minimal   — mixed inbound only, no TUN (lightweight)
       '';
     };
 
