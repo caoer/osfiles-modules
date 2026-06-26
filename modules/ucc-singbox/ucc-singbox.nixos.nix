@@ -63,7 +63,7 @@ let
 
     target_uid="$(${pkgs.coreutils}/bin/id -u ${cfg.user})"
 
-    url="${cfg.apiUrl}/config/$token?type=singbox&features=ucc&preset=${cfg.preset}&port=-1&env.HOME=${userHome}"
+    url="${cfg.apiUrl}/config/$token?type=singbox&features=${lib.concatStringsSep "," cfg.features}&preset=${cfg.preset}&port=-1&env.HOME=${userHome}"
     ${lib.optionalString (cfg.extraQueryParams != "") ''url="$url&${cfg.extraQueryParams}"''}
 
     echo "${serviceName}: fetching config from API (preset=${cfg.preset})"
@@ -127,6 +127,15 @@ in
           tun-cn       — relay: TUN, full geo routing + UCC relay chain (CN hosts)
           ucc-minimal  — mixed inbound only, no TUN (lightweight)
       '';
+    };
+
+    features = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [
+        "ucc"
+        "ipv6"
+      ];
+      description = "API feature flags (CSV). 'ucc' is required; add 'ipv6', 'emoji' as needed.";
     };
 
     extraQueryParams = lib.mkOption {
