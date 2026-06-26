@@ -79,7 +79,8 @@ let
     # Post-process:
     # - Root (uid 0): omit include_uid so TUN captures ALL users' traffic
     # - Non-root: add include_uid to scope TUN to that user only
-    # - Enable auto_redirect on Linux TUN
+    # - Enable auto_redirect on Linux (always recommended: better routing,
+    #   higher performance, Docker bridge compat)
     if [ "$target_uid" = "0" ]; then
       echo "$raw" | ${pkgs.jq}/bin/jq '
         (.inbounds // [] | .[] | select(.type == "tun"))
@@ -191,10 +192,14 @@ in
         AmbientCapabilities = [
           "CAP_NET_ADMIN"
           "CAP_NET_BIND_SERVICE"
+          # Required for process_path_regex routing: readlink(/proc/<pid>/exe)
+          # for other users' processes needs CAP_SYS_PTRACE since Linux 4.12.
+          "CAP_SYS_PTRACE"
         ];
         CapabilityBoundingSet = [
           "CAP_NET_ADMIN"
           "CAP_NET_BIND_SERVICE"
+          "CAP_SYS_PTRACE"
         ];
         Restart = "on-failure";
         RestartSec = 10;
