@@ -86,7 +86,13 @@
   shadowsocks_method ? "2022-blake3-aes-256-gcm",
 
   # ── Process bypass ────────────────────────────────────────────────
-  route_direct_process_name ? [ ],
+  # Processes that must always go direct (mesh VPN, benchmarks, etc.)
+  route_direct_process_name ? [
+    "easytier-core"
+    "easytier-cli"
+    "iperf"
+    "iperf3"
+  ],
 
   # ── Direct routing CIDRs (mesh overlays, tailscale, etc.) ─────────
   route_direct_cidrs ? [
