@@ -9,6 +9,7 @@
     ./ucc/ucc.nixos.nix
     (import ./paseo/paseo.nixos.nix { inherit paseoFlake; })
     ./sing-box-client/sing-box-client.nixos.nix
+    ./sing-box-gateway/sing-box-gateway.nixos.nix
     ./ucc-singbox/ucc-singbox.nixos.nix
   ];
 }
