@@ -11,7 +11,6 @@
     ./git/git.nix
     ./glow/glow.nix
     ./lazygit/lazygit.nix
-    ./nvim/nvim.nix
     ./server-files/server-files.nix
     ./starship/starship.nix
     ./tmux/tmux.nix

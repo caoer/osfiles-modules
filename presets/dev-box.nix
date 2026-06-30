@@ -10,7 +10,6 @@
   osf.git.enable = true;
   osf.glow.enable = true;
   osf.lazygit.enable = true;
-  osf.nvim.enable = true;
   osf.starship.enable = true;
   osf.tmux.enable = true;
   osf.yazi.enable = true;
