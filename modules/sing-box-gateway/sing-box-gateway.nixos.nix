@@ -143,7 +143,8 @@ let
   # Destinations excluded from tproxy — locally routable, no proxy needed.
   tproxyExcludeDests = cfg.tproxyExcludeDests ++ cfg.sourceSubnets;
 
-  chainName = "SING_BOX_TPROXY_${lib.toUpper (builtins.replaceStrings ["-"] ["_"] cfg.serviceName)}";
+  # iptables chain name limit: 28 chars. Use a short fixed name.
+  chainName = "SB_GW_TPROXY";
 
   setupScript = pkgs.writeShellScript "${cfg.serviceName}-tproxy-setup" ''
     set -e
