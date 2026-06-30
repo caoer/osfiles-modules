@@ -299,9 +299,6 @@ let
         }
       ];
     final = foreignDnsServer.tag;
-    # Bootstrap resolver: used to resolve hostnames in outbound/transport
-    # configs before sing-box's own DNS listener is ready (chicken-and-egg).
-    default_domain_resolver = dnsDomestic.tag;
   }
   // lib.optionalAttrs (dnsCacheCapacity != null) { cache_capacity = dnsCacheCapacity; }
   // lib.optionalAttrs dnsReverseMapping { reverse_mapping = true; };
