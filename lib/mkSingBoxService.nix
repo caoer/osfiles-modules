@@ -20,7 +20,7 @@
   restartSec ? 5,
   limitNoFile ? 65536,
   dataDir ? null,
-  extraStartPre ? null,
+  extraStartPre ? null, # null | string | list of ExecStartPre commands
   extraStopPost ? null,
   restartTriggers ? [ ],
 }:
@@ -32,13 +32,16 @@ let
 
   checkCmd = "${package}/bin/sing-box check -c ${configPath}";
 
-  execStartPre =
-    if extraStartPre != null then
-      extraStartPre
-    else if check then
-      checkCmd
-    else
-      null;
+  startPreList =
+    (
+      if builtins.isList extraStartPre then
+        extraStartPre
+      else if extraStartPre != null then
+        [ extraStartPre ]
+      else
+        [ ]
+    )
+    ++ lib.optional check checkCmd;
 in
 {
   "${name}" = {
@@ -63,8 +66,8 @@ in
       RestartSec = restartSec;
       LimitNOFILE = limitNoFile;
     }
-    // lib.optionalAttrs (execStartPre != null) {
-      ExecStartPre = execStartPre;
+    // lib.optionalAttrs (startPreList != [ ]) {
+      ExecStartPre = startPreList;
     }
     // lib.optionalAttrs (extraStopPost != null) {
       ExecStopPost = extraStopPost;
