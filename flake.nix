@@ -101,6 +101,7 @@
       # Shared lib — importable by consumers.
       lib = {
         mkSingBoxService = import ./lib/mkSingBoxService.nix;
+        singboxConfigGenerator = import ./lib/singbox-config-generator.nix;
       };
 
       # Overlay: adds metacubexd, mosdns, watchdog to pkgs.
