@@ -136,7 +136,16 @@ let
     printf 'nameserver ${cfg.dns.domestic.server}\n' > /etc/resolv.conf
   '';
   # Restore: point system at sing-box's DNS listener AFTER it's up.
+  # Type=simple means ExecStartPost races with sing-box init — poll
+  # until the DNS listener on :53 is responsive before switching.
   dnsRestoreScript = pkgs.writeShellScript "${cfg.serviceName}-dns-restore" ''
+    for i in $(seq 1 20); do
+      if ${pkgs.dig}/bin/dig @127.0.0.1 +timeout=1 +tries=1 localhost >/dev/null 2>&1; then
+        printf 'nameserver 127.0.0.1\n' > /etc/resolv.conf
+        exit 0
+      fi
+      sleep 0.5
+    done
     printf 'nameserver 127.0.0.1\n' > /etc/resolv.conf
   '';
   # Fallback: when service stops, restore direct DNS so the box isn't blind.
