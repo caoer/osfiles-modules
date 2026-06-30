@@ -354,7 +354,15 @@ let
 
   # ── Route rules ───────────────────────────────────────────────────
   routeRules =
-    [
+    # Pre-sniff bypass: kernel-level direct for mesh/overlay CIDRs.
+    # auto_redirect skips these at the kernel — never enters sing-box userspace.
+    lib.optionals (route_direct_cidrs != [ ]) [
+      {
+        ip_cidr = route_direct_cidrs;
+        action = "bypass";
+      }
+    ]
+    ++ [
       { action = "sniff"; }
       { protocol = "dns"; action = "hijack-dns"; }
     ]
@@ -366,13 +374,6 @@ let
       }
     ]
     ++ extraRouteRules
-    ++ lib.optionals (route_direct_cidrs != [ ]) [
-      {
-        ip_cidr = route_direct_cidrs;
-        action = "route";
-        outbound = "direct";
-      }
-    ]
     ++ lib.optionals (route_direct_domains != [ ]) [
       {
         domain_suffix = route_direct_domains;
