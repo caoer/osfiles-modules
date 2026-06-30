@@ -113,6 +113,9 @@ let
       secretFile = cfg.clashApi.secretFile;
       script = pkgs.writeShellScript "${cfg.serviceName}-inject-secret" ''
         set -euo pipefail
+        # Bootstrap DNS: transports resolve via system resolver before
+        # sing-box's own :53 is up.
+        printf 'nameserver ${cfg.dns.domestic.server}\n' > /etc/resolv.conf
         if ! test -s "${secretFile}"; then
           echo "${cfg.serviceName}: ${secretFile} missing or empty" >&2
           exit 1
@@ -125,11 +128,19 @@ let
     in
     "+${script}";
 
-  # ── DNS fallback (restore direct DNS when service stops) ──────────
-  dnsFallbackScript = pkgs.writeShellScript "${cfg.serviceName}-dns-fallback" ''
+  # ── DNS bootstrap / fallback ───────────────────────────────────
+  # Bootstrap: set resolv.conf to domestic DNS BEFORE sing-box starts,
+  # so transports (redis-pubsub) can resolve hostnames via Go's net.Dial
+  # before sing-box's own DNS listener on :53 is up.
+  dnsBootstrapScript = pkgs.writeShellScript "${cfg.serviceName}-dns-bootstrap" ''
     printf 'nameserver ${cfg.dns.domestic.server}\n' > /etc/resolv.conf
   '';
-  restoreDnsCmd = "${pkgs.openresolv}/sbin/resolvconf -u";
+  # Restore: point system at sing-box's DNS listener AFTER it's up.
+  dnsRestoreScript = pkgs.writeShellScript "${cfg.serviceName}-dns-restore" ''
+    printf 'nameserver 127.0.0.1\n' > /etc/resolv.conf
+  '';
+  # Fallback: when service stops, restore direct DNS so the box isn't blind.
+  dnsFallbackScript = dnsBootstrapScript;
 
   # ── iptables TPROXY rules ─────────────────────────────────────────
   tproxyOn = cfg.sourceSubnets != [ ];
@@ -537,7 +548,8 @@ in
           stateDirectory = cfg.serviceName;
           runtimeDirectory = if clashOn then cfg.serviceName else null;
           check = !clashOn;
-          extraStartPre = if clashOn then secretInjectionScript else null;
+          # Clash: inject script includes dns bootstrap. Non-clash: bootstrap script.
+          extraStartPre = if clashOn then secretInjectionScript else "+${dnsBootstrapScript}";
           extraStopPost = "${dnsFallbackScript}";
           capabilities = [
             "CAP_NET_BIND_SERVICE"
@@ -550,7 +562,7 @@ in
             conflicts = cfg.conflictServices;
           }
           // lib.optionalAttrs cfg.dns.setSystemResolver {
-            serviceConfig.ExecStartPost = restoreDnsCmd;
+            serviceConfig.ExecStartPost = "+${dnsRestoreScript}";
           };
         }
       # ── TPROXY iptables rules (companion oneshot) ─────────────────
