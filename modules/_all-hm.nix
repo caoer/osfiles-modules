@@ -1,6 +1,7 @@
 # modules/_all-hm.nix — single HM import for consumers.
 # Enables nothing by default — consumers toggle osf.<tool>.enable.
-{ config, lib, ... }:
+{ cnixvimFlake }:
+{ config, lib, pkgs, ... }:
 {
   imports = [
     ./aliases/aliases.nix
@@ -11,6 +12,9 @@
     ./git/git.nix
     ./glow/glow.nix
     ./lazygit/lazygit.nix
+    (import ./nixvim/nixvim.nix {
+      cnixvimPackage = cnixvimFlake.packages.${pkgs.system}.default;
+    })
     ./server-files/server-files.nix
     ./starship/starship.nix
     ./tmux/tmux.nix

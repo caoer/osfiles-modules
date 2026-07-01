@@ -35,6 +35,10 @@
       url = "github:getpaseo/paseo/v0.1.102";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # NixVim (cnixvim) — thin wrapper over caoer/nixvim (khanelivim fork).
+    # Do NOT follow nixpkgs — cnixvim lets khanelivim use its own nixpkgs.
+    cnixvim.url = "github:caoer/cnixvim";
   };
 
   outputs =
@@ -42,6 +46,7 @@
       self,
       nixpkgs,
       paseo,
+      cnixvim,
       ...
     }:
     let
@@ -91,7 +96,7 @@
 
       # HM modules: all tool modules (opt-in via osf.<tool>.enable) + presets.
       homeManagerModules = {
-        default = import ./modules/_all-hm.nix;
+        default = import ./modules/_all-hm.nix { cnixvimFlake = cnixvim; };
         dev-box = import ./presets/dev-box.nix;
       };
 
