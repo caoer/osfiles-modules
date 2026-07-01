@@ -46,7 +46,6 @@ in
     programs.ripgrep.enable = true;
 
     home.packages = with pkgs; [
-      (writeScriptBin "pbcopy" (builtins.readFile ./pbcopy))
       lazydocker
       nodejs
       go

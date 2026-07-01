@@ -15,6 +15,7 @@ in
         search_mode = "fuzzy";
         filter_mode = "global";
         filter_mode_shell_up_key_binding = "directory";
+        inline_height_shell_up_key_binding = 10;
         workspaces = true;
         invert = false;
         ctrl_n_shortcuts = false;

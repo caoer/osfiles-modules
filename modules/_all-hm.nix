@@ -5,6 +5,7 @@
 {
   imports = [
     ./aliases/aliases.nix
+    ./clipboard/clipboard.nix
     ./atuin/atuin.nix
     ./btop/btop.nix
     ./direnv/direnv.nix

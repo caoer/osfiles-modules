@@ -5,6 +5,7 @@
   osf.aliases.enable = true;
   osf.atuin.enable = true;
   osf.btop.enable = true;
+  osf.clipboard.enable = true;
   osf.direnv.enable = true;
   osf.eza.enable = true;
   osf.git.enable = true;

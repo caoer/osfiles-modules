@@ -8,10 +8,6 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    programs.zsh.shellGlobalAliases = {
-      C = "| pbcopy";
-    };
-
     programs.zsh.shellAliases = {
       vi = "nvim";
 
