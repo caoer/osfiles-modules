@@ -44,7 +44,7 @@ search_mode = "fuzzy"
 ## possible values: "global", "host", "session", "session-preload", "directory", "workspace"
 ## consider using search.filters to customize the enablement and order of filter modes
 filter_mode = "global"
-filter_mode_shell_up_key_binding = "session"
+filter_mode_shell_up_key_binding = "directory"
 
 ## With workspace filtering enabled, Atuin will filter for commands executed
 ## in any directory within a git repository tree (default: false).
@@ -206,12 +206,6 @@ common_subcommands = [
   "systemctl",
   "tmux",
   "yarn",
-  "ucc-reily",
-  "ucc-unusual",
-  "ucc-vows",
-  "ucc-timing",
-  "ucc-random",
-  "ucc-mesh",
 ]
 
 ## Set commands that should be totally stripped and ignored from stats
