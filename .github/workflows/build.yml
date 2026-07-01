@@ -5,14 +5,27 @@ on:
   pull_request:
   workflow_dispatch:
 jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: "actions/checkout@v6"
+        with:
+          persist-credentials: false
+      - uses: "DeterminateSystems/determinate-nix-action@v3"
+      - run: nix flake check --no-build
+
   build:
+    needs: eval
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - system: x86_64-linux
-            runner: ubuntu-latest
-    runs-on: ${{ matrix.runner }}
+        package:
+          - paseo
+          - codex
+          - metacubexd
+          - mosdns
+          - watchdog
+    runs-on: ubuntu-latest
     permissions:
       id-token: "write"
       contents: "read"
@@ -22,13 +35,4 @@ jobs:
           persist-credentials: false
       - uses: "DeterminateSystems/determinate-nix-action@v3"
       - uses: "DeterminateSystems/magic-nix-cache-action@main"
-      - run: nix flake check --no-build
-      - run: nix build .#packages.${{ matrix.system }}.paseo
-      - run: nix build .#packages.${{ matrix.system }}.codex
-        if: matrix.system == 'x86_64-linux'
-      - run: nix build .#packages.${{ matrix.system }}.metacubexd
-        if: matrix.system == 'x86_64-linux'
-      - run: nix build .#packages.${{ matrix.system }}.mosdns
-        if: matrix.system == 'x86_64-linux'
-      - run: nix build .#packages.${{ matrix.system }}.watchdog
-        if: matrix.system == 'x86_64-linux'
+      - run: nix build .#packages.x86_64-linux.${{ matrix.package }}
