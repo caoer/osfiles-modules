@@ -1,0 +1,35 @@
+name: "Build"
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        system: [x86_64-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: "write"
+      contents: "read"
+    steps:
+      - uses: "actions/checkout@v6"
+        with:
+          persist-credentials: false
+      - uses: "DeterminateSystems/determinate-nix-action@v3"
+      - uses: "DeterminateSystems/flakehub-push@main"
+        with:
+          visibility: "public"
+          rolling: true
+          include-output-paths: true
+
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: "actions/checkout@v6"
+        with:
+          persist-credentials: false
+      - uses: "DeterminateSystems/determinate-nix-action@v3"
+      - run: nix flake check --no-build
