@@ -84,6 +84,10 @@
   shadowsocks_listen_port ? null,
   shadowsocks_password ? "SECRET_PLACEHOLDER",
   shadowsocks_method ? "2022-blake3-aes-256-gcm",
+  # Accept sing-box multiplex (smux/yamux/h2mux) on the SS inbound.
+  # Transparent to non-mux clients (Surge et al.) — mux is detected via the
+  # special sp.mux.sing-box.arpa destination, plain SS passes through.
+  shadowsocks_multiplex ? false,
 
   # ── Process bypass ────────────────────────────────────────────────
   # Processes that must always go direct (mesh VPN, benchmarks, etc.)
@@ -331,7 +335,7 @@ let
   ];
 
   ssInbound = lib.optionals (shadowsocks_listen_port != null) [
-    {
+    ({
       type = "shadowsocks";
       tag = "ss-in";
       listen = "::";
@@ -339,6 +343,9 @@ let
       method = shadowsocks_method;
       password = shadowsocks_password;
     }
+    // lib.optionalAttrs shadowsocks_multiplex {
+      multiplex.enabled = true;
+    })
   ];
 
   dnsInbound = lib.optionals dnsListen [
