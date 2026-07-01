@@ -5,7 +5,7 @@
 {
   lib,
   buildGoModule,
-  src ? null,
+  watchdogSrc ? null,
 }:
 
 buildGoModule {
@@ -13,10 +13,10 @@ buildGoModule {
   version = "0.1.0";
 
   src =
-    if src != null then
-      src
+    if watchdogSrc != null then
+      watchdogSrc
     else
-      builtins.throw "watchdog: pass src (locus kit/watchdog/) via flake input or buildGoModule args";
+      builtins.throw "watchdog: pass watchdogSrc (locus kit/watchdog/) via flake input or buildGoModule args";
 
   # Compute after first build: nix build, copy printed hash here.
   vendorHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
