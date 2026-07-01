@@ -9,8 +9,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        system: [x86_64-linux]
-    runs-on: ubuntu-latest
+        include:
+          - system: x86_64-linux
+            runner: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     permissions:
       id-token: "write"
       contents: "read"
@@ -19,17 +21,14 @@ jobs:
         with:
           persist-credentials: false
       - uses: "DeterminateSystems/determinate-nix-action@v3"
-      - uses: "DeterminateSystems/flakehub-push@main"
-        with:
-          visibility: "public"
-          rolling: true
-          include-output-paths: true
-
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: "actions/checkout@v6"
-        with:
-          persist-credentials: false
-      - uses: "DeterminateSystems/determinate-nix-action@v3"
+      - uses: "DeterminateSystems/magic-nix-cache-action@main"
       - run: nix flake check --no-build
+      - run: nix build .#packages.${{ matrix.system }}.paseo
+      - run: nix build .#packages.${{ matrix.system }}.codex
+        if: matrix.system == 'x86_64-linux'
+      - run: nix build .#packages.${{ matrix.system }}.metacubexd
+        if: matrix.system == 'x86_64-linux'
+      - run: nix build .#packages.${{ matrix.system }}.mosdns
+        if: matrix.system == 'x86_64-linux'
+      - run: nix build .#packages.${{ matrix.system }}.watchdog
+        if: matrix.system == 'x86_64-linux'
