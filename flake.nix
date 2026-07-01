@@ -85,6 +85,16 @@
         # System-level baseline for semi-managed dev boxes.
         member-base = import ./modules/member-base.nix;
 
+        # --- Mesh/network subsystem (extracted from osfiles) ---
+        # These take an `osfLib` module arg: consumers inject their private
+        # data (wellKnown, networks, mesh registry, singBoxUpstreams) plus
+        # this flake's lib helpers via `_module.args.osfLib`. NOT part of
+        # `default` — importing them without osfLib fails eval by design.
+        osf-network = import ./modules/net/network.nix;
+        osf-easytier = import ./modules/net/easytier.nix;
+        osf-tailscale = import ./modules/net/tailscale.nix;
+        osf-gateway = import ./modules/net/gateway;
+
         # Default: member-base + agent NixOS modules (ucc, paseo).
         default = import ./modules/_all-nixos.nix { paseoFlake = paseo; };
       };
@@ -107,6 +117,11 @@
       lib = {
         mkSingBoxService = import ./lib/mkSingBoxService.nix;
         singboxConfigGenerator = import ./lib/singbox-config-generator.nix;
+        mkEasytierStartScript = import ./lib/mkEasytierStartScript.nix;
+        easytierTailscaleFix = import ./lib/easytierTailscaleFix.nix;
+        # Cross-platform net tuning — a { platform } function returning a
+        # module: (netTuning { platform = "linux"; }) / "darwin".
+        netTuning = import ./modules/net/net-tuning.nix;
       };
 
       # Overlay: adds metacubexd, mosdns, watchdog to pkgs.
