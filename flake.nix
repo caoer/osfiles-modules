@@ -119,6 +119,10 @@
         singboxConfigGenerator = import ./lib/singbox-config-generator.nix;
         mkEasytierStartScript = import ./lib/mkEasytierStartScript.nix;
         easytierTailscaleFix = import ./lib/easytierTailscaleFix.nix;
+        mkSsOutbound = import ./lib/mkSsOutbound.nix;
+        # Universal network constants (public DNS resolvers, RFC1918, CGNAT,
+        # magic-DNS addresses) — safe-public, shared by all consumers.
+        wellKnown = import ./lib/well-known.nix;
         # Cross-platform net tuning — a { platform } function returning a
         # module: (netTuning { platform = "linux"; }) / "darwin".
         netTuning = import ./modules/net/net-tuning.nix;
