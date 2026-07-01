@@ -21,8 +21,10 @@
   limitNoFile ? 65536,
   dataDir ? null,
   extraStartPre ? null, # null | string | list of ExecStartPre commands
+  extraStartPost ? null, # null | string | list of ExecStartPost commands
   extraStopPost ? null,
   restartTriggers ? [ ],
+  conflicts ? [ ], # systemd Conflicts=
 }:
 let
   execStart =
@@ -59,6 +61,9 @@ in
   // lib.optionalAttrs (partOfServices != [ ]) {
     partOf = partOfServices;
   }
+  // lib.optionalAttrs (conflicts != [ ]) {
+    inherit conflicts;
+  }
   // {
     serviceConfig = {
       ExecStart = execStart;
@@ -68,6 +73,9 @@ in
     }
     // lib.optionalAttrs (startPreList != [ ]) {
       ExecStartPre = startPreList;
+    }
+    // lib.optionalAttrs (extraStartPost != null) {
+      ExecStartPost = extraStartPost;
     }
     // lib.optionalAttrs (extraStopPost != null) {
       ExecStopPost = extraStopPost;

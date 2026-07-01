@@ -7,17 +7,14 @@
 # DNS: split DNS built into sing-box — CN domains → AliDNS (direct), foreign
 # domains → Cloudflare DoH (via proxy). DNS inbound on :53 serves LAN clients.
 #
-# Config generation delegated to singbox-config-generator (../lib/).
-# Host-specific outbound groups, route rules, and DNS config are passed through
-# NixOS options and merged by the generator.
-#
-# Optional iptables TPROXY mode: when sourceSubnets is set, a companion
-# oneshot service installs mangle/TPROXY rules for forwarded LAN traffic.
+# Config generation delegated to singbox-config-generator (../../lib/).
+# Host-specific options are passed through NixOS options; for routing/process/
+# domain overrides, use extraGeneratorArgs (maps directly to generator params).
 #
 # Usage:
 #   osf.sing-box-gateway = {
 #     enable = true;
-#     outboundGroups = { ... };      # host-specific proxy exits
+#     outboundGroups = { ... };
 #     sourceSubnets = [ "192.168.80.0/24" ];
 #     clashApi.enable = true;
 #     clashApi.secretFile = config.sops.secrets.clash-api-secret.path;
@@ -34,7 +31,6 @@ let
   cfg = config.osf.sing-box-gateway;
 
   gen = (import ../../lib/singbox-config-generator.nix) { inherit lib; };
-  mkService = (import ../../lib/mkSingBoxService.nix) { inherit lib; };
 
   singBoxPkg = cfg.package;
   dashboardPkg = cfg.dashboardPackage;
@@ -42,28 +38,28 @@ let
   clashOn = cfg.clashApi.enable;
   dashboardDir = "${cfg.stateDirectory}/dashboard";
   runtimeConfigPath = "/run/${cfg.serviceName}/config.json";
+  configPath = if clashOn then runtimeConfigPath else configTemplate;
+  hasSubnets = cfg.sourceSubnets != [ ];
 
-  # ── Generate sing-box config via singbox-config-generator ──────────
+  capabilities = [
+    "CAP_NET_BIND_SERVICE" # DNS on :53
+    "CAP_NET_ADMIN" # TUN creation, auto_redirect nftables
+    "CAP_NET_RAW" # ICMP probes
+  ];
+
+  # ── Generate sing-box config ─────────────────────────────────────
   generated = gen ({
     inherit (cfg)
       outboundGroups
       finalOutbound
+      shadowtlsDefaults
+      extraOutbounds
+      extraRouteRules
       ;
 
-    shadowtlsDefaults = cfg.shadowtlsDefaults;
-
-    extraOutbounds = cfg.extraOutbounds;
-
     tun_address = cfg.tunAddresses;
-    interface_name = cfg.tunInterface;
     route_exclude_address = cfg.routeExcludeAddresses;
     exclude_interface = cfg.excludeInterfaces;
-
-    route_direct_cidrs = cfg.directCidrs;
-    route_direct_domains = cfg.directDomains;
-    route_direct_process_name = cfg.directProcessNames;
-
-    extraRouteRules = cfg.extraRouteRules;
 
     dnsDomestic = cfg.dns.domestic;
     dnsForeign = cfg.dns.foreign;
@@ -77,7 +73,6 @@ let
     dnsListenPort = cfg.dns.listenPort;
 
     geoCnPath = cfg.geoCnPath;
-    find_process = cfg.findProcess;
     logLevel = cfg.logLevel;
     cacheFilePath = "${cfg.stateDirectory}/cache.db";
 
@@ -102,20 +97,16 @@ let
         null;
   } // cfg.extraGeneratorArgs);
 
-  # Post-process: configPostProcess hook (e.g. store_dns in cache_file).
   finalConfig = cfg.configPostProcess generated.config;
 
   configTemplate = pkgs.writeText "${cfg.serviceName}.json" (builtins.toJSON finalConfig);
 
-  # ── Secret injection (when Clash API is enabled) ──────────────────
+  # ── Secret injection (Clash API) ─────────────────────────────────
   secretInjectionScript =
     let
       secretFile = cfg.clashApi.secretFile;
       script = pkgs.writeShellScript "${cfg.serviceName}-inject-secret" ''
         set -euo pipefail
-        # Bootstrap DNS: transports resolve via system resolver before
-        # sing-box's own :53 is up.
-        printf 'nameserver ${cfg.dns.domestic.server}\n' > /etc/resolv.conf
         if ! test -s "${secretFile}"; then
           echo "${cfg.serviceName}: ${secretFile} missing or empty" >&2
           exit 1
@@ -128,16 +119,14 @@ let
     in
     "+${script}";
 
-  # ── DNS bootstrap / fallback ───────────────────────────────────
-  # Bootstrap: set resolv.conf to domestic DNS BEFORE sing-box starts,
-  # so transports (redis-pubsub) can resolve hostnames via Go's net.Dial
-  # before sing-box's own DNS listener on :53 is up.
+  # ── DNS lifecycle ────────────────────────────────────────────────
+  # Bootstrap: domestic DNS in resolv.conf BEFORE sing-box starts, so
+  # transports (redis-pubsub) can resolve via Go's net.Dial.
   dnsBootstrapScript = pkgs.writeShellScript "${cfg.serviceName}-dns-bootstrap" ''
     printf 'nameserver ${cfg.dns.domestic.server}\n' > /etc/resolv.conf
   '';
-  # Restore: point system at sing-box's DNS listener AFTER it's up.
-  # Type=simple means ExecStartPost races with sing-box init — poll
-  # until the DNS listener on :53 is responsive before switching.
+  # Restore: point system at sing-box's :53 AFTER it's up. Polls because
+  # Type=simple — ExecStartPost races with sing-box init.
   dnsRestoreScript = pkgs.writeShellScript "${cfg.serviceName}-dns-restore" ''
     for i in $(seq 1 20); do
       if ${pkgs.dig}/bin/dig @127.0.0.1 +timeout=1 +tries=1 localhost >/dev/null 2>&1; then
@@ -147,64 +136,6 @@ let
       sleep 0.5
     done
     printf 'nameserver 127.0.0.1\n' > /etc/resolv.conf
-  '';
-  # Fallback: when service stops, restore direct DNS so the box isn't blind.
-  dnsFallbackScript = dnsBootstrapScript;
-
-  # ── iptables TPROXY rules ─────────────────────────────────────────
-  tproxyOn = cfg.sourceSubnets != [ ];
-  tproxyPort = cfg.tproxyPort;
-  fwmark = cfg.tproxyFwmark;
-  routeTable = cfg.tproxyRouteTable;
-
-  iptables = "${pkgs.iptables}/bin/iptables";
-  ip = "${pkgs.iproute2}/bin/ip";
-
-  # Destinations excluded from tproxy — locally routable, no proxy needed.
-  tproxyExcludeDests = cfg.tproxyExcludeDests ++ cfg.sourceSubnets;
-
-  # iptables chain name limit: 28 chars. Use a short fixed name.
-  chainName = "SB_GW_TPROXY";
-
-  setupScript = pkgs.writeShellScript "${cfg.serviceName}-tproxy-setup" ''
-    set -e
-    ${ip} rule add fwmark ${toString fwmark} lookup ${toString routeTable} 2>/dev/null || true
-    ${ip} route replace local default dev lo table ${toString routeTable}
-
-    ${iptables} -t mangle -N ${chainName} 2>/dev/null || ${iptables} -t mangle -F ${chainName}
-
-    ${lib.concatMapStrings (cidr: ''
-      ${iptables} -t mangle -A ${chainName} -d ${cidr} -j RETURN
-    '') tproxyExcludeDests}
-
-    ${lib.optionalString (!cfg.dns.listen) ''
-      ${iptables} -t mangle -A ${chainName} -p udp --dport 53 -j RETURN
-      ${iptables} -t mangle -A ${chainName} -p tcp --dport 53 -j RETURN
-    ''}
-
-    ${iptables} -t mangle -A ${chainName} -p tcp -j TPROXY \
-      --on-port ${toString tproxyPort} --tproxy-mark ${toString fwmark}/${toString fwmark}
-    ${iptables} -t mangle -A ${chainName} -p udp -j TPROXY \
-      --on-port ${toString tproxyPort} --tproxy-mark ${toString fwmark}/${toString fwmark}
-
-    ${lib.concatMapStrings (subnet: ''
-      ${iptables} -t mangle -A PREROUTING -s ${subnet} -j ${chainName}
-    '') cfg.sourceSubnets}
-
-    ${pkgs.nftables}/bin/nft insert rule inet nixos-fw rpfilter meta mark ${toString fwmark} accept 2>/dev/null || true
-  '';
-
-  teardownScript = pkgs.writeShellScript "${cfg.serviceName}-tproxy-teardown" ''
-    ${pkgs.nftables}/bin/nft delete rule inet nixos-fw rpfilter handle \
-      $(${pkgs.nftables}/bin/nft -a list chain inet nixos-fw rpfilter 2>/dev/null \
-        | grep "meta mark.*0x0000000${toString fwmark} accept" | awk '{print $NF}') 2>/dev/null || true
-    ${lib.concatMapStrings (subnet: ''
-      ${iptables} -t mangle -D PREROUTING -s ${subnet} -j ${chainName} 2>/dev/null || true
-    '') cfg.sourceSubnets}
-    ${iptables} -t mangle -F ${chainName} 2>/dev/null || true
-    ${iptables} -t mangle -X ${chainName} 2>/dev/null || true
-    ${ip} rule del fwmark ${toString fwmark} lookup ${toString routeTable} 2>/dev/null || true
-    ${ip} route del local default dev lo table ${toString routeTable} 2>/dev/null || true
   '';
 
 in
@@ -216,7 +147,7 @@ in
     package = mkOption {
       type = types.package;
       default = pkgs.callPackage ../../packages/sing-box.nix { };
-      description = "sing-box package to use. Override with a fork (e.g. sing-box-sor) as needed.";
+      description = "sing-box package to use.";
     };
 
     dashboardPackage = mkOption {
@@ -229,7 +160,7 @@ in
     serviceName = mkOption {
       type = types.str;
       default = "sing-box-tproxy";
-      description = "systemd service name. Also used for state/runtime directories.";
+      description = "systemd service name.";
     };
 
     stateDirectory = mkOption {
@@ -238,13 +169,7 @@ in
       description = "Persistent state directory (cache.db, dashboard).";
     };
 
-    # ── TUN configuration ───────────────────────────────────────────
-    tunInterface = mkOption {
-      type = types.str;
-      default = "tun-gw";
-      description = "TUN interface name.";
-    };
-
+    # ── TUN ─────────────────────────────────────────────────────────
     tunAddresses = mkOption {
       type = types.listOf types.str;
       default = [ "172.19.0.1/30" ];
@@ -254,7 +179,7 @@ in
     routeExcludeAddresses = mkOption {
       type = types.listOf types.str;
       default = [ ];
-      description = "IPs excluded from TUN at the kernel level (DNS resolvers, mesh relay).";
+      description = "IPs excluded from TUN routing (DNS resolvers, mesh relay).";
     };
 
     excludeInterfaces = mkOption {
@@ -303,49 +228,20 @@ in
         ssPassword = "";
         password = "";
       };
-      description = "Default ShadowTLS parameters for outbound groups that use `shadowtls = true`.";
+      description = "Default ShadowTLS parameters for `shadowtls = true` entries.";
     };
 
     finalOutbound = mkOption {
       type = types.str;
       default = "proxy-select";
-      description = "Tag of the outbound used as route.final (catch-all exit).";
+      description = "Tag of the catch-all route outbound.";
     };
 
     # ── Route rules ─────────────────────────────────────────────────
-    directCidrs = mkOption {
-      type = types.listOf types.str;
-      default = [
-        "10.144.0.0/16"
-        "10.42.0.0/16"
-        "10.43.0.0/16"
-        "100.64.0.0/10"
-      ];
-      description = "CIDRs routed direct (mesh, overlay, tailscale).";
-    };
-
-    directDomains = mkOption {
-      type = types.listOf types.str;
-      default = [ ];
-      description = "Domains routed direct.";
-    };
-
-    directProcessNames = mkOption {
-      type = types.listOf types.str;
-      default = [
-        "easytier-core"
-        "easytier-cli"
-        "iperf"
-        "iperf3"
-      ];
-      description = "Process names routed direct (mesh VPN, benchmarks).";
-    };
-
-    findProcess = mkOption {
-      type = types.bool;
-      default = false;
-      description = "Enable process name matching in route rules.";
-    };
+    # For directCidrs, directDomains, directProcessNames, findProcess:
+    # use extraGeneratorArgs (e.g. extraGeneratorArgs.route_direct_cidrs).
+    # Generator defaults: mesh CIDRs, .lockin.mesh/.et.net/.ts.net domains,
+    # easytier/iperf process bypass.
 
     extraRouteRules = mkOption {
       type = types.listOf (types.attrsOf types.anything);
@@ -362,7 +258,7 @@ in
           tag = "dns-domestic";
           server = "223.5.5.5";
         };
-        description = "Domestic DNS server (CN domains, direct).";
+        description = "Domestic DNS server (CN domains, direct). Also used for resolv.conf bootstrap.";
       };
 
       foreign = mkOption {
@@ -373,7 +269,7 @@ in
           server = "1.1.1.1";
           path = "/dns-query";
         };
-        description = "Foreign DNS server (non-CN domains, via proxy).";
+        description = "Foreign DNS server (non-CN, via proxy).";
       };
 
       detour = mkOption {
@@ -398,7 +294,7 @@ in
       cacheCapacity = mkOption {
         type = types.nullOr types.int;
         default = 4096;
-        description = "DNS cache capacity. Null uses sing-box default.";
+        description = "DNS cache capacity.";
       };
 
       reverseMapping = mkOption {
@@ -428,7 +324,7 @@ in
       setSystemResolver = mkOption {
         type = types.bool;
         default = true;
-        description = "Point system resolver at sing-box DNS listener (127.0.0.1).";
+        description = "Point system resolver at sing-box's :53 and manage resolv.conf lifecycle.";
       };
     };
 
@@ -436,7 +332,7 @@ in
     geoCnPath = mkOption {
       type = types.path;
       default = ../../data/geo-cn.json;
-      description = "Path to the CN geo ruleset (local, source format).";
+      description = "Path to the CN geo ruleset.";
     };
 
     # ── Clash API ───────────────────────────────────────────────────
@@ -458,50 +354,18 @@ in
       secretFile = mkOption {
         type = types.nullOr types.str;
         default = null;
-        example = "/run/secrets/clash-api-secret";
-        description = "Path to file containing the Clash API secret. Injected at runtime.";
+        description = "Path to file containing the Clash API secret.";
       };
     };
 
-    # ── TPROXY (iptables rules for forwarded LAN traffic) ───────────
+    # ── Forwarded LAN traffic ──────────────────────────────────────
     sourceSubnets = mkOption {
       type = types.listOf types.str;
       default = [ ];
-      description = "Source CIDRs whose forwarded traffic gets transparently proxied via iptables TPROXY. Empty disables TPROXY rules.";
+      description = "Source CIDRs for forwarded traffic. Gates auto_redirect firewall INPUT rules.";
     };
 
-    tproxyPort = mkOption {
-      type = types.port;
-      default = 12345;
-      description = "TPROXY inbound listen port.";
-    };
-
-    tproxyFwmark = mkOption {
-      type = types.int;
-      default = 1;
-      description = "fwmark for TPROXY policy routing.";
-    };
-
-    tproxyRouteTable = mkOption {
-      type = types.int;
-      default = 100;
-      description = "Policy routing table number for TPROXY.";
-    };
-
-    tproxyExcludeDests = mkOption {
-      type = types.listOf types.str;
-      default = [
-        "127.0.0.0/8"
-        "10.0.0.0/8"
-        "100.64.0.0/10"
-        "172.16.0.0/12"
-        "224.0.0.0/4"
-        "255.255.255.255/32"
-      ];
-      description = "Destination CIDRs excluded from TPROXY (loopback, mesh, overlay, multicast). sourceSubnets auto-appended.";
-    };
-
-    # ── Lifecycle hooks ─────────────────────────────────────────────
+    # ── Lifecycle ──────────────────────────────────────────────────
     afterServices = mkOption {
       type = types.listOf types.str;
       default = [ "network-online.target" ];
@@ -511,23 +375,35 @@ in
     conflictServices = mkOption {
       type = types.listOf types.str;
       default = [ ];
-      description = "systemd Conflicts= (services that must stop when this starts).";
+      description = "systemd Conflicts= (mutually exclusive services).";
     };
 
     configPostProcess = mkOption {
       type = types.functionTo (types.attrsOf types.anything);
       default = c: c;
-      description = "Post-process the generated config attrset before serialization.";
+      description = "Post-process the generated config attrset.";
     };
 
     extraGeneratorArgs = mkOption {
       type = types.attrsOf types.anything;
       default = { };
-      description = "Extra arguments passed directly to singbox-config-generator.";
+      description = ''
+        Extra arguments passed to singbox-config-generator. Maps directly to
+        generator params: route_direct_cidrs, route_direct_domains,
+        route_direct_process_name, find_process, interface_name, etc.
+      '';
     };
 
     logLevel = mkOption {
-      type = types.enum [ "trace" "debug" "info" "warn" "error" "fatal" "panic" ];
+      type = types.enum [
+        "trace"
+        "debug"
+        "info"
+        "warn"
+        "error"
+        "fatal"
+        "panic"
+      ];
       default = "info";
       description = "sing-box log level.";
     };
@@ -541,54 +417,38 @@ in
       }
     ];
 
-    environment.systemPackages = [ singBoxPkg ]
-      ++ lib.optionals tproxyOn [ pkgs.iptables pkgs.iproute2 ];
+    environment.systemPackages = [ singBoxPkg ];
 
-    # ── Main sing-box service ───────────────────────────────────────
-    systemd.services =
-      lib.recursiveUpdate
-        (mkService {
-          name = cfg.serviceName;
-          package = singBoxPkg;
-          configPath = if clashOn then runtimeConfigPath else configTemplate;
-          description = "sing-box transparent proxy gateway (TUN auto_redirect)";
-          afterServices = cfg.afterServices
-            ++ lib.optional clashOn "sops-nix.service";
-          stateDirectory = cfg.serviceName;
-          runtimeDirectory = if clashOn then cfg.serviceName else null;
-          check = !clashOn;
-          # Clash: inject script includes dns bootstrap. Non-clash: bootstrap script.
-          extraStartPre = if clashOn then secretInjectionScript else "+${dnsBootstrapScript}";
-          extraStopPost = "${dnsFallbackScript}";
-          capabilities = [
-            "CAP_NET_BIND_SERVICE"
-            "CAP_NET_ADMIN"
-            "CAP_NET_RAW"
-          ];
-        })
+    # ── sing-box service ───────────────────────────────────────────
+    systemd.services.${cfg.serviceName} = {
+      description = "sing-box transparent proxy gateway (TUN auto_redirect)";
+      after = cfg.afterServices ++ lib.optional clashOn "sops-nix.service";
+      wants = lib.filter (s: lib.hasSuffix ".target" s) cfg.afterServices;
+      wantedBy = [ "multi-user.target" ];
+      conflicts = cfg.conflictServices;
+
+      serviceConfig =
         {
-          ${cfg.serviceName} = {
-            conflicts = cfg.conflictServices;
-          }
-          // lib.optionalAttrs cfg.dns.setSystemResolver {
-            serviceConfig.ExecStartPost = "+${dnsRestoreScript}";
-          };
+          ExecStart = "${singBoxPkg}/bin/sing-box run -c ${configPath}";
+          ExecStartPre =
+            [ "+${dnsBootstrapScript}" ]
+            ++ lib.optional clashOn secretInjectionScript
+            ++ [ "${singBoxPkg}/bin/sing-box check -c ${configPath}" ];
+          ExecStopPost = "${dnsBootstrapScript}";
+          Restart = "on-failure";
+          RestartSec = 5;
+          LimitNOFILE = 65536;
+          AmbientCapabilities = capabilities;
+          CapabilityBoundingSet = capabilities;
+          StateDirectory = cfg.serviceName;
         }
-      # ── TPROXY iptables rules (companion oneshot) ─────────────────
-      // lib.optionalAttrs tproxyOn {
-        "${cfg.serviceName}-rules" = {
-          description = "tproxy iptables rules for ${cfg.serviceName}";
-          after = [ "${cfg.serviceName}.service" ];
-          requires = [ "${cfg.serviceName}.service" ];
-          wantedBy = [ "multi-user.target" ];
-          serviceConfig = {
-            Type = "oneshot";
-            RemainAfterExit = true;
-            ExecStart = "+${setupScript}";
-            ExecStop = "+${teardownScript}";
-          };
+        // lib.optionalAttrs clashOn {
+          RuntimeDirectory = cfg.serviceName;
+        }
+        // lib.optionalAttrs cfg.dns.setSystemResolver {
+          ExecStartPost = "+${dnsRestoreScript}";
         };
-      };
+    };
 
     # ── Networking ──────────────────────────────────────────────────
     networking = lib.mkMerge [
@@ -598,21 +458,14 @@ in
       {
         firewall.checkReversePath = mkForce "loose";
       }
-      (lib.mkIf tproxyOn {
-        firewall.extraInputRules =
-          let
-            lanSubnets = cfg.sourceSubnets;
-          in
-          lib.optionalString (lanSubnets != [ ]) ''
-            ip saddr { ${lib.concatStringsSep ", " lanSubnets} } ct status dnat accept comment "sing-box auto_redirect: forwarded LAN clients"
-          ''
-          + ''
-            meta mark ${toString fwmark} accept
-          '';
+      (lib.mkIf hasSubnets {
+        firewall.extraInputRules = ''
+          ip saddr { ${lib.concatStringsSep ", " cfg.sourceSubnets} } ct status dnat accept comment "sing-box auto_redirect: forwarded LAN clients"
+        '';
       })
     ];
 
-    # metacubexd dashboard assets.
+    # metacubexd dashboard assets
     systemd.tmpfiles.rules = lib.mkIf clashOn [
       "L+ ${dashboardDir} - - - - ${dashboardPkg}"
     ];
