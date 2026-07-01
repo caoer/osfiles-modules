@@ -32,7 +32,7 @@
     # THE central paseo pin for the whole fleet. Transferred from agent-flake.
     # One bump here reaches every consumer that imports this flake.
     paseo = {
-      url = "github:getpaseo/paseo/v0.1.102-beta.1";
+      url = "github:getpaseo/paseo/v0.1.102";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };

@@ -27,11 +27,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1781906751,
-        "narHash": "sha256-6Ld1PqmptFtFKblE+SynhRgyBApUWcmrISetWqWHeeo=",
+        "lastModified": 1782839684,
+        "narHash": "sha256-vzs4SBgPsK4aNzlJR2PpFwtARazXMOxZonQnDz0YHxk=",
         "owner": "nix-community",
         "repo": "home-manager",
-        "rev": "37f21dfa5d27e71b75bacd9418b156f9265e312e",
+        "rev": "2a37d71bbe69e1522ddabf03a4cea0374958bdbe",
         "type": "github"
       },
       "original": {
@@ -119,16 +119,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1782537471,
-        "narHash": "sha256-xWJvm0EKQNhLgI9lExPxB9JHG0ssUSj9RuwfPbgqhFs=",
+        "lastModified": 1782813631,
+        "narHash": "sha256-+xB5qvLnl1o6aRq/g6JhEbFizHVh/mXJP4373pSRBz0=",
         "owner": "getpaseo",
         "repo": "paseo",
-        "rev": "62bdb52eaa98533c9ab023dd198bf3f1e895ba66",
+        "rev": "e32c50f2d7b55e12f5351452916a7c6888e393be",
         "type": "github"
       },
       "original": {
         "owner": "getpaseo",
-        "ref": "v0.1.102-beta.1",
+        "ref": "v0.1.102",
         "repo": "paseo",
         "type": "github"
       }
@@ -150,11 +150,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1781943681,
-        "narHash": "sha256-NFHmA7H47adqiyp+0iEOyZOQhmigDqA/NBAlf4imB6U=",
+        "lastModified": 1782165805,
+        "narHash": "sha256-478kKQBvK6SYTOdN2h9jhKJv94nbXRbFMfuL1WshErg=",
         "owner": "Mic92",
         "repo": "sops-nix",
-        "rev": "420f8d2e9882911f65cfac15cc706f639ba96cca",
+        "rev": "56b24064fdcaedca53553b1a6d607fd23b613a24",
         "type": "github"
       },
       "original": {
