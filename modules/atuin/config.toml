@@ -206,6 +206,11 @@ common_subcommands = [
   "systemctl",
   "tmux",
   "yarn",
+  "colmena",
+  "home-manager",
+  "just",
+  "nixos-rebuild",
+  "osf",
 ]
 
 ## Set commands that should be totally stripped and ignored from stats
