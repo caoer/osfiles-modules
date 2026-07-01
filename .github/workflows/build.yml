@@ -24,7 +24,6 @@ jobs:
           - codex
           - metacubexd
           - mosdns
-          - watchdog
     runs-on: ubuntu-latest
     permissions:
       id-token: "write"
