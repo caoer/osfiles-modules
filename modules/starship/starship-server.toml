@@ -6,6 +6,7 @@ command_timeout = 1000
 
 format = """
 [╭](dimmed white) \
+${env_var.YAZI_LEVEL}\
 $directory\
 ${custom.git_relative_path}\
 ${custom.git_branch}\
@@ -102,6 +103,10 @@ when = false
 variable = "DENV_ENV_NAME"
 format = "[{$env_value}]($style) "
 style = "yellow"
+
+[env_var.YAZI_LEVEL]
+variable = "YAZI_LEVEL"
+format = "[↩ yazi](italic fg:#9d7cd8) "
 
 [username]
 style_user = "bold green"
