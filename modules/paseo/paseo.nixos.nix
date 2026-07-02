@@ -248,6 +248,12 @@ in
         environment = {
           NODE_ENV = "production";
           PASEO_HOME = paseoHome;
+          # Shared ucc config dir — lets paseo agents read session history.
+          CLAUDE_CONFIG_DIR = "${home}/.local/share/ucc/shared";
+          # Explicit UCC_HOME: ccc-injection builds its log dir from it.
+          # Without it, bundles < c632921 hit a HOME+"./local" typo fallback
+          # → EACCES mkdir /home/<user>. spam on Agent SDK stderr.
+          UCC_HOME = "${home}/.local/share/ucc";
           # mkForce overrides the default PATH from NixOS's systemd module.
           PATH = lib.mkForce (agentPath name home);
         }
