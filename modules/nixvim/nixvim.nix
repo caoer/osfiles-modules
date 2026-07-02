@@ -1,7 +1,9 @@
 # modules/nixvim/nixvim.nix — NixVim via cnixvim (caoer/cnixvim).
 #
-# cnixvim is a thin wrapper flake over caoer/nixvim (khanelivim fork)
-# that builds neovim with the zt profile. We just consume the package.
+# cnixvim is a thin wrapper flake over upstream khaneliman/khanelivim
+# (direct flake input — not the caoer/nixvim fork, which is staged as
+# reference in staging-repos) that builds neovim with zt customization
+# modules layered on top. We just consume the package.
 #
 # cnixvimPackage is injected by _all-hm.nix from the flake input.
 { cnixvimPackage }:
