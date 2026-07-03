@@ -23,7 +23,6 @@ jobs:
           - paseo
           - codex
           - metacubexd
-          - mosdns
     runs-on: ubuntu-latest
     permissions:
       id-token: "write"

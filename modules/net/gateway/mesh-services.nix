@@ -19,35 +19,17 @@ let
       tier = "trusted";
       desc = "SSH";
     };
-    adguard-ui = {
-      port = 3000;
-      proto = "tcp";
-      tier = "both";
-      desc = "AdGuard Home UI";
-    };
     dns-tcp = {
       port = 53;
       proto = "tcp";
       tier = "both";
-      desc = "AdGuard DNS";
+      desc = "sing-box DNS";
     };
     dns-udp = {
       port = 53;
       proto = "udp";
       tier = "both";
-      desc = "AdGuard DNS";
-    };
-    mosdns-tcp = {
-      port = 5353;
-      proto = "tcp";
-      tier = "internal";
-      desc = "MosDNS (AdGuard upstream)";
-    };
-    mosdns-udp = {
-      port = 5353;
-      proto = "udp";
-      tier = "internal";
-      desc = "MosDNS (AdGuard upstream)";
+      desc = "sing-box DNS";
     };
     easytier-rpc = {
       port = 15888;

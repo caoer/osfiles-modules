@@ -1,7 +1,10 @@
 # modules/net/gateway/default.nix — mesh gateway service bundle.
 #
 # Imports all sub-modules. Each guards itself:
-#   cfg.enable       → shared services (adguard, mosdns, easytier, base firewall)
+#   cfg.enable       → shared services (easytier, base firewall)
+#
+# DNS is served by the sing-box tproxy :53 inbound (edge role) — there is
+# no separate DNS stack (AdGuard/MosDNS were removed 2026-07).
 #
 # Tailscale is NOT part of this bundle — it's the standalone osf.tailscale
 # module (modules/nixos/tailscale.nix); gateway hosts opt in per-host.
@@ -13,8 +16,6 @@
     ./options.nix
     # ── Shared (gated on cfg.enable) ───────
     ./easytier.nix
-    ./mosdns.nix
-    ./adguard.nix
     ./firewall.nix
     ./network-defaults.nix
     ./watchdog.nix

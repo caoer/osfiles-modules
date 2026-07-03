@@ -6,7 +6,7 @@
 #
 # Tier semantics (from mesh-services.nix):
 #   trusted  — mesh subnets only
-#   both     — mesh + LAN subnets (DNS, AdGuard UI, proxy inbounds)
+#   both     — mesh + LAN subnets (DNS, proxy inbounds)
 #   internal — no firewall rules (localhost-bound)
 #
 # NAT activates when natInternalInterface + natExternalInterface are set.

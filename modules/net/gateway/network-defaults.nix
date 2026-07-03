@@ -27,15 +27,6 @@ lib.mkMerge [
           allow = [ "mesh" ];
           desc = "SSH";
         };
-        adguard-ui = {
-          port = 3000;
-          proto = "tcp";
-          allow = [
-            "mesh"
-            "lan"
-          ];
-          desc = "AdGuard Home UI";
-        };
         dns = {
           port = 53;
           proto = "both";
@@ -43,15 +34,9 @@ lib.mkMerge [
             "mesh"
             "lan"
           ];
-          desc = "AdGuard DNS";
+          desc = "sing-box DNS";
         };
-        # mosdns/easytier-rpc: internal (allow=[] -> no rule, loopback only)
-        mosdns = {
-          port = 5353;
-          proto = "both";
-          allow = [ ];
-          desc = "MosDNS";
-        };
+        # easytier-rpc: internal (allow=[] -> no rule, loopback only)
         easytier-rpc = {
           port = 15888;
           proto = "tcp";

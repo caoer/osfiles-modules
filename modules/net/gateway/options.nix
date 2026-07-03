@@ -1,7 +1,7 @@
 # modules/net/gateway/options.nix — osf.gateway.* option declarations.
 #
 # Three tiers:
-#   osf.gateway.enable        — shared infra (EasyTier, AdGuard, MosDNS)
+#   osf.gateway.enable        — shared infra (EasyTier, base firewall)
 #   osf.gateway.edge.enable   — edge role: tproxy + tunnel traffic TO a core router
 #   osf.gateway.core.enable   — core role: terminate tunnels FROM edge gateways
 {
@@ -64,7 +64,7 @@ let
 in
 {
   options.osf.gateway = {
-    enable = mkEnableOption "mesh gateway shared services (EasyTier, AdGuard, MosDNS)";
+    enable = mkEnableOption "mesh gateway shared services (EasyTier, base firewall)";
 
     hostname = mkOption {
       type = types.str;
@@ -90,7 +90,7 @@ in
     lanSubnets = mkOption {
       type = types.listOf types.str;
       default = [ ];
-      description = "LAN CIDRs allowed to reach 'both'-tier services (DNS, AdGuard UI). Mesh subnets are always included.";
+      description = "LAN CIDRs allowed to reach 'both'-tier services (DNS). Mesh subnets are always included.";
     };
 
     # ── Parameterized shared services ────────────────────────────────
@@ -98,8 +98,8 @@ in
       type = types.str;
       example = "example-tailnet.ts.net";
       description = ''
-        Tailscale tailnet DNS name. Queries under it are resolved via MagicDNS
-        (MosDNS) and routed direct in the tproxy. Consumer-provided.
+        Tailscale tailnet DNS name. Queries under it are routed direct in the
+        tproxy. Consumer-provided.
       '';
     };
 
@@ -110,149 +110,6 @@ in
         consumers provide their own build. Used by the edge tunnel client and
         the core tunnel server.
       '';
-    };
-
-    dns = {
-      foreignUpstreams = mkOption {
-        type = types.listOf types.str;
-        default = [ ];
-        example = [
-          "https://${wk.dns.google}/dns-query"
-          "https://${wk.dns.cloudflare}/dns-query"
-        ];
-        description = ''
-          Upstream DNS servers for non-CN domain resolution.
-          CN gateways: mesh IPs of a foreign relay (via EasyTier).
-          Non-CN gateways: DoH URLs for direct resolution.
-          Consumer-provided (e.g. via mkDefault in a fleet-wide module).
-        '';
-      };
-    };
-
-    adguard = {
-      enable = mkOption {
-        type = types.bool;
-        default = true;
-        description = "Enable AdGuard Home DNS frontend. Disable when sing-box handles DNS directly.";
-      };
-
-      passwordHash = mkOption {
-        type = types.str;
-        example = "$2y$10$...";
-        description = ''
-          bcrypt hash of the AdGuard Home admin password
-          (generate: htpasswd -B -n -b admin <password>). Consumer-provided —
-          never commit a hash derived from a real password to a public repo.
-        '';
-      };
-
-      extraRewrites = mkOption {
-        type = types.listOf (
-          types.submodule {
-            options = {
-              domain = mkOption {
-                type = types.str;
-                description = "Domain to rewrite.";
-              };
-              answer = mkOption {
-                type = types.str;
-                description = "IP to resolve to.";
-              };
-            };
-          }
-        );
-        default = [ ];
-        description = "Per-host DNS rewrites for AdGuard Home.";
-      };
-    };
-
-    mosdns = {
-      enable = mkOption {
-        type = types.bool;
-        default = true;
-        description = "Enable MosDNS split DNS resolver. Disable when sing-box handles DNS directly.";
-      };
-
-      region = mkOption {
-        type = types.enum [
-          "CN"
-          "US"
-        ];
-        default = "CN";
-        description = ''
-          DNS region profile for the gateway.
-
-          CN (default): split DNS for gateways inside the GFW — CN domains resolve
-          via AliDNS/DNSPod, foreign domains via foreignUpstreams, with geosite/geoip
-          rule downloads and GFW-poison (resp_ip) detection. Geodata is fetched at
-          service start via AliDNS.
-
-          US: plain fast resolution for gateways outside the GFW — every public
-          domain resolves via foreignUpstreams (DoH). No geodata download, no CN
-          split, no GFW-poison detection. Mesh-internal domains (et.net, k8s,
-          tailscale, meshHosts) are still resolved locally. Use on US gateways:
-          the CN geodata fetch resolves sources via AliDNS, which is slow/unreliable
-          from the US and crash-loops the service.
-        '';
-      };
-
-      extraCnDomains = mkOption {
-        type = types.listOf types.str;
-        default = [ ];
-        example = [
-          "domain:aliyuncs.com"
-          "domain:aliyun.com"
-        ];
-        description = "Extra domains forced to CN DNS resolution (bypasses geosite lookup).";
-      };
-
-      dropForeignAAAA = mkOption {
-        type = types.bool;
-        default = false;
-        description = ''
-          Return NODATA for AAAA queries on foreign (non-CN) and unknown domains.
-          Use on v4-only-egress gateways: the sing-box TUN proxies IPv4 only, so a
-          foreign AAAA answer black-holes (no v6 proxy path) and the CN fallback can
-          leak GFW-poisoned AAAA (2001::1). CN domains keep AAAA (native v6 egress).
-        '';
-      };
-
-      meshHosts = mkOption {
-        type = types.listOf (
-          types.submodule {
-            options = {
-              ip = mkOption {
-                type = types.str;
-                description = "IP address.";
-              };
-              domain = mkOption {
-                type = types.str;
-                description = "Domain to resolve to this IP.";
-              };
-            };
-          }
-        );
-        default = [ ];
-        description = "Split DNS: domains resolved to mesh IPs for on-mesh clients.";
-      };
-
-      geodataUrls = {
-        geositeCn = mkOption {
-          type = types.str;
-          description = "URL of the CN domain list (mosdns domain_set format). Consumer-provided.";
-        };
-
-        geositeNotCn = mkOption {
-          type = types.str;
-          default = "https://cdn.jsdelivr.net/gh/Loyalsoldier/domain-list-custom@release/geolocation-!cn.txt";
-          description = "URL of the not-CN domain list (mosdns domain_set format).";
-        };
-
-        geoipCn = mkOption {
-          type = types.str;
-          description = "URL of the CN IP CIDR list (mosdns ip_set format). Consumer-provided.";
-        };
-      };
     };
 
     meshServices = mkOption {

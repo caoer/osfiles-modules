@@ -128,10 +128,9 @@
         netTuning = import ./modules/net/net-tuning.nix;
       };
 
-      # Overlay: adds metacubexd, mosdns, watchdog to pkgs.
+      # Overlay: adds metacubexd, watchdog to pkgs.
       overlays.default = final: prev: {
         metacubexd = final.callPackage ./packages/metacubexd.nix { };
-        mosdns = final.callPackage ./packages/mosdns.nix { };
         watchdog = final.callPackage ./packages/watchdog.nix { };
       };
 
@@ -148,7 +147,6 @@
         // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
           codex = pkgs.callPackage ./packages/codex.nix { };
           metacubexd = pkgs.callPackage ./packages/metacubexd.nix { };
-          mosdns = pkgs.callPackage ./packages/mosdns.nix { };
           watchdog = pkgs.callPackage ./packages/watchdog.nix { };
           paseo-speech = paseoPkg.overrideAttrs (old: {
             patches = (old.patches or [ ]) ++ [ ./packages/paseo-speech-worker-trace.patch ];
