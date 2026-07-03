@@ -79,7 +79,7 @@ let
       dnsListenAddress = cfg.dns.listenAddress;
       dnsListenPort = cfg.dns.listenPort;
 
-      geoCnUrl = cfg.geoCnUrl;
+      geoCnPath = cfg.geoCnPath;
       logLevel = cfg.logLevel;
       cacheFilePath = "${cfg.stateDirectory}/cache.db";
 
@@ -340,13 +340,16 @@ in
     };
 
     # ── Geo ruleset ─────────────────────────────────────────────────
-    geoCnUrl = mkOption {
-      type = types.str;
-      default = "https://rules.sui.pics/singbox/rule-sets/cn.json";
+    geoCnPath = mkOption {
+      type = types.path;
+      default = pkgs.callPackage ../../packages/geo-cn-ruleset.nix { };
+      defaultText = lib.literalExpression "pkgs.callPackage ../../packages/geo-cn-ruleset.nix { }";
       description = ''
-        URL of the CN geo rule-set (sing-box source format), fetched at
-        runtime and cached in cache_file. The download detour defaults to
-        proxy-select; override via extraGeneratorArgs.geoCnDownloadDetour.
+        LOCAL path to the CN geo rule-set (sing-box source format). Must be
+        a store path so startup has zero network dependency — a remote
+        rule_set hard-fails sing-box start when cache.db lacks the tag,
+        crash-looping the gateway's LAN DNS. Default is nix-pinned from the
+        geo-rules R2 cache; bump via packages/update-geo-cn.sh.
       '';
     };
 

@@ -143,16 +143,15 @@
   # ── Final outbound (catch-all route) ──────────────────────────────
   finalOutbound ? "proxy-select",
 
-  # ── Geo-CN ruleset (remote, fetched from our R2 cache) ────────────
-  # Fetched at runtime and cached via experimental.cache_file (always
-  # enabled below) — after the first successful fetch the service starts
-  # from cache and refreshes lazily. Without a cache, startup REQUIRES a
-  # successful fetch, so the download detour defaults to proxy-select
-  # (always emitted by this generator): CN gateways behind the GFW fetch
-  # through the tunnel, non-CN gateways through their proxy pool.
-  geoCnUrl ? "https://rules.sui.pics/singbox/rule-sets/cn.json",
-  geoCnUpdateInterval ? "1d",
-  geoCnDownloadDetour ? "proxy-select",
+  # ── Geo-CN ruleset (LOCAL path, nix-pinned from our R2 cache) ─────
+  # MUST be a local file (rides the closure). A remote rule_set hard-fails
+  # sing-box startup whenever cache.db lacks the tag (first boot, cache
+  # wipe, corruption after unclean kill) — the initial fetch rides the
+  # detour pool at t=0 and a dead member crash-loops the host's LAN DNS
+  # (proven live on gateway-cq, 2026-07-03). Gateway DNS must come up with
+  # ZERO network dependency at startup. Source from R2 at BUILD time
+  # instead: packages/geo-cn-ruleset.nix (bump via update-geo-cn.sh).
+  geoCnPath,
 
   # ── http_clients ──────────────────────────────────────────────────
   httpClients ? [ ],
@@ -276,9 +275,9 @@ let
   ];
 
   # ── Top-level urltest + selector ──────────────────────────────────
-  # Loud failure over silent success: dnsDetour, finalOutbound, and
-  # geoCnDownloadDetour all default to proxy-select, so an empty main
-  # pool would emit urltest-all with zero members — sing-box rejects
+  # Loud failure over silent success: dnsDetour and finalOutbound
+  # default to proxy-select, so an empty main pool would emit
+  # urltest-all with zero members — sing-box rejects
   # that only at runtime (`sing-box check`), long after the build
   # reported success. Groups with zero outbounds are excluded (their
   # selector is never emitted — including them would leave a dangling
@@ -473,13 +472,9 @@ let
     rule_set = [
       {
         tag = "geo-cn";
-        type = "remote";
+        type = "local";
         format = "source";
-        url = geoCnUrl;
-        update_interval = geoCnUpdateInterval;
-        # 1.14 http_client (inline, dial fields) — replaces the
-        # deprecated download_detour.
-        http_client.detour = geoCnDownloadDetour;
+        path = geoCnPath;
       }
     ];
   }
