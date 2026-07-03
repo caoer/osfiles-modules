@@ -12,6 +12,13 @@
         "flakes"
       ];
       auto-optimise-store = lib.mkDefault true;
+
+      # Fleet binary cache (niks3 → R2 CDN, see osfiles lib/osf/niks3.nix).
+      # Signed reads only; falls back to cache.nixos.org when unreachable.
+      extra-substituters = [ "https://cache.0xtau.com" ];
+      extra-trusted-public-keys = [
+        "cache.0xtau.com-1:M4y9SWhqZED/M9nvrYvJuxAlEj0umdXnxRYMgoXZxfU="
+      ];
     };
     gc = {
       automatic = lib.mkDefault true;
