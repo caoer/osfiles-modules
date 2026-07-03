@@ -116,8 +116,17 @@
   # ── DNS ───────────────────────────────────────────────────────────
   # Split DNS: CN domains → domestic (direct), everything else → foreign (via proxy).
   dnsDetour ? "proxy-select",
-  dnsDomestic ? { type = "udp"; tag = "dns-domestic"; server = "223.5.5.5"; },
-  dnsForeign ? { type = "https"; tag = "dns-foreign"; server = "1.1.1.1"; path = "/dns-query"; },
+  dnsDomestic ? {
+    type = "udp";
+    tag = "dns-domestic";
+    server = "223.5.5.5";
+  },
+  dnsForeign ? {
+    type = "https";
+    tag = "dns-foreign";
+    server = "1.1.1.1";
+    path = "/dns-query";
+  },
   extraDnsServers ? [ ],
   extraDnsRules ? [ ],
 
@@ -134,8 +143,16 @@
   # ── Final outbound (catch-all route) ──────────────────────────────
   finalOutbound ? "proxy-select",
 
-  # ── Geo-CN ruleset path (baked in) ────────────────────────────────
-  geoCnPath,
+  # ── Geo-CN ruleset (remote, fetched from our R2 cache) ────────────
+  # Fetched at runtime and cached via experimental.cache_file (always
+  # enabled below) — after the first successful fetch the service starts
+  # from cache and refreshes lazily. Without a cache, startup REQUIRES a
+  # successful fetch, so the download detour defaults to proxy-select
+  # (always emitted by this generator): CN gateways behind the GFW fetch
+  # through the tunnel, non-CN gateways through their proxy pool.
+  geoCnUrl ? "https://rules.sui.pics/singbox/rule-sets/cn.json",
+  geoCnUpdateInterval ? "1d",
+  geoCnDownloadDetour ? "proxy-select",
 
   # ── http_clients ──────────────────────────────────────────────────
   httpClients ? [ ],
@@ -163,9 +180,12 @@ let
   # ── Shadowtls pair expansion ──────────────────────────────────────
   # Entry with `shadowtls = true` → 2 outbounds (stls wrapper + inner ss).
   # Entry without → passed through as-is.
-  expandEntry = entry:
+  expandEntry =
+    entry:
     if entry.shadowtls or false then
-      let tag = entry.tag; in
+      let
+        tag = entry.tag;
+      in
       [
         {
           type = "shadowtls";
@@ -203,14 +223,14 @@ let
       [ entry ];
 
   # The user-facing tag for urltest/selector membership.
-  entryTag = entry:
-    if entry.shadowtls or false then "ss-${entry.tag}" else entry.tag;
+  entryTag = entry: if entry.shadowtls or false then "ss-${entry.tag}" else entry.tag;
 
   # ── Process each outboundGroup ────────────────────────────────────
 
   groupNames = lib.attrNames outboundGroups;
 
-  groupResolved = name:
+  groupResolved =
+    name:
     let
       entries = outboundGroups.${name}.outbounds or [ ];
     in
@@ -222,10 +242,10 @@ let
   groupHasUrltest = name: outboundGroups.${name}.urltest or true;
   groupInMainPool = name: outboundGroups.${name}.inMainPool or true;
 
-  allGroupRawOutbounds =
-    lib.concatMap (name: (groupResolved name).allOutbounds) groupNames;
+  allGroupRawOutbounds = lib.concatMap (name: (groupResolved name).allOutbounds) groupNames;
 
-  mkGroupMeta = name:
+  mkGroupMeta =
+    name:
     let
       tags = (groupResolved name).allTags;
     in
@@ -248,16 +268,21 @@ let
   allGroupMeta = lib.concatMap mkGroupMeta groupNames;
 
   # ── Direct outbound ──────────────────────────────────────────────
-  directOutbound = [ { type = "direct"; tag = "direct"; } ];
+  directOutbound = [
+    {
+      type = "direct";
+      tag = "direct";
+    }
+  ];
 
   # ── Top-level urltest + selector ──────────────────────────────────
-  mainPoolMembers =
-    lib.concatMap (name:
-      if groupInMainPool name then
-        if groupHasUrltest name then [ name ]
-        else (groupResolved name).allTags
-      else [ ]
-    ) groupNames;
+  mainPoolMembers = lib.concatMap (
+    name:
+    if groupInMainPool name then
+      if groupHasUrltest name then [ name ] else (groupResolved name).allTags
+    else
+      [ ]
+  ) groupNames;
 
   urltestOutbound = {
     type = "urltest";
@@ -279,13 +304,22 @@ let
     ++ allGroupRawOutbounds
     ++ allGroupMeta
     ++ extraOutbounds
-    ++ [ urltestOutbound selectorOutbound ];
+    ++ [
+      urltestOutbound
+      selectorOutbound
+    ];
 
   # ── DNS ───────────────────────────────────────────────────────────
-  foreignDnsServer = dnsForeign // { detour = dnsDetour; };
+  foreignDnsServer = dnsForeign // {
+    detour = dnsDetour;
+  };
 
   dnsBlock = {
-    servers = [ dnsDomestic foreignDnsServer ] ++ extraDnsServers;
+    servers = [
+      dnsDomestic
+      foreignDnsServer
+    ]
+    ++ extraDnsServers;
     rules =
       extraDnsRules
       ++ [
@@ -335,17 +369,19 @@ let
   ];
 
   ssInbound = lib.optionals (shadowsocks_listen_port != null) [
-    ({
-      type = "shadowsocks";
-      tag = "ss-in";
-      listen = "::";
-      listen_port = shadowsocks_listen_port;
-      method = shadowsocks_method;
-      password = shadowsocks_password;
-    }
-    // lib.optionalAttrs shadowsocks_multiplex {
-      multiplex.enabled = true;
-    })
+    (
+      {
+        type = "shadowsocks";
+        tag = "ss-in";
+        listen = "::";
+        listen_port = shadowsocks_listen_port;
+        method = shadowsocks_method;
+        password = shadowsocks_password;
+      }
+      // lib.optionalAttrs shadowsocks_multiplex {
+        multiplex.enabled = true;
+      }
+    )
   ];
 
   dnsInbound = lib.optionals dnsListen [
@@ -371,7 +407,10 @@ let
     ]
     ++ [
       { action = "sniff"; }
-      { protocol = "dns"; action = "hijack-dns"; }
+      {
+        protocol = "dns";
+        action = "hijack-dns";
+      }
     ]
     ++ lib.optionals (route_direct_process_name != [ ]) [
       {
@@ -409,9 +448,13 @@ let
     rule_set = [
       {
         tag = "geo-cn";
-        type = "local";
+        type = "remote";
         format = "source";
-        path = geoCnPath;
+        url = geoCnUrl;
+        update_interval = geoCnUpdateInterval;
+        # 1.14 http_client (inline, dial fields) — replaces the
+        # deprecated download_detour.
+        http_client.detour = geoCnDownloadDetour;
       }
     ];
   }
@@ -428,8 +471,7 @@ let
     clash_api = {
       external_controller = "${clashApi.host}:${toString clashApi.port}";
       external_ui =
-        if apiService != null then apiService.dashboardPath
-        else "${cacheFilePath}/../dashboard";
+        if apiService != null then apiService.dashboardPath else "${cacheFilePath}/../dashboard";
       secret = clashApi.secret or "CLASH_SECRET_PLACEHOLDER";
     };
   };

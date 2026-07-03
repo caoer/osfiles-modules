@@ -26,7 +26,13 @@
   ...
 }:
 let
-  inherit (lib) mkEnableOption mkOption mkIf mkForce types;
+  inherit (lib)
+    mkEnableOption
+    mkOption
+    mkIf
+    mkForce
+    types
+    ;
 
   cfg = config.osf.sing-box-gateway;
 
@@ -48,54 +54,57 @@ let
   ];
 
   # ── Generate sing-box config ─────────────────────────────────────
-  generated = gen ({
-    inherit (cfg)
-      outboundGroups
-      finalOutbound
-      shadowtlsDefaults
-      extraOutbounds
-      extraRouteRules
-      ;
+  generated = gen (
+    {
+      inherit (cfg)
+        outboundGroups
+        finalOutbound
+        shadowtlsDefaults
+        extraOutbounds
+        extraRouteRules
+        ;
 
-    tun_address = cfg.tunAddresses;
-    route_exclude_address = cfg.routeExcludeAddresses;
-    exclude_interface = cfg.excludeInterfaces;
+      tun_address = cfg.tunAddresses;
+      route_exclude_address = cfg.routeExcludeAddresses;
+      exclude_interface = cfg.excludeInterfaces;
 
-    dnsDomestic = cfg.dns.domestic;
-    dnsForeign = cfg.dns.foreign;
-    dnsDetour = cfg.dns.detour;
-    extraDnsServers = cfg.dns.extraServers;
-    extraDnsRules = cfg.dns.extraRules;
-    dnsCacheCapacity = cfg.dns.cacheCapacity;
-    dnsReverseMapping = cfg.dns.reverseMapping;
-    dnsListen = cfg.dns.listen;
-    dnsListenAddress = cfg.dns.listenAddress;
-    dnsListenPort = cfg.dns.listenPort;
+      dnsDomestic = cfg.dns.domestic;
+      dnsForeign = cfg.dns.foreign;
+      dnsDetour = cfg.dns.detour;
+      extraDnsServers = cfg.dns.extraServers;
+      extraDnsRules = cfg.dns.extraRules;
+      dnsCacheCapacity = cfg.dns.cacheCapacity;
+      dnsReverseMapping = cfg.dns.reverseMapping;
+      dnsListen = cfg.dns.listen;
+      dnsListenAddress = cfg.dns.listenAddress;
+      dnsListenPort = cfg.dns.listenPort;
 
-    geoCnPath = cfg.geoCnPath;
-    logLevel = cfg.logLevel;
-    cacheFilePath = "${cfg.stateDirectory}/cache.db";
+      geoCnUrl = cfg.geoCnUrl;
+      logLevel = cfg.logLevel;
+      cacheFilePath = "${cfg.stateDirectory}/cache.db";
 
-    clashApi =
-      if clashOn then
-        {
-          port = cfg.clashApi.port;
-          host = cfg.clashApi.host;
-          secret = "CLASH_SECRET_PLACEHOLDER";
-        }
-      else
-        null;
-    apiService =
-      if clashOn then
-        {
-          port = cfg.clashApi.port + 1;
-          host = cfg.clashApi.host;
-          secret = "CLASH_SECRET_PLACEHOLDER";
-          dashboardPath = dashboardDir;
-        }
-      else
-        null;
-  } // cfg.extraGeneratorArgs);
+      clashApi =
+        if clashOn then
+          {
+            port = cfg.clashApi.port;
+            host = cfg.clashApi.host;
+            secret = "CLASH_SECRET_PLACEHOLDER";
+          }
+        else
+          null;
+      apiService =
+        if clashOn then
+          {
+            port = cfg.clashApi.port + 1;
+            host = cfg.clashApi.host;
+            secret = "CLASH_SECRET_PLACEHOLDER";
+            dashboardPath = dashboardDir;
+          }
+        else
+          null;
+    }
+    // cfg.extraGeneratorArgs
+  );
 
   finalConfig = cfg.configPostProcess generated.config;
 
@@ -190,25 +199,27 @@ in
 
     # ── Outbounds ───────────────────────────────────────────────────
     outboundGroups = mkOption {
-      type = types.attrsOf (types.submodule {
-        options = {
-          outbounds = mkOption {
-            type = types.listOf (types.attrsOf types.anything);
-            default = [ ];
-            description = "Outbound definitions. Entries with `shadowtls = true` auto-expand.";
+      type = types.attrsOf (
+        types.submodule {
+          options = {
+            outbounds = mkOption {
+              type = types.listOf (types.attrsOf types.anything);
+              default = [ ];
+              description = "Outbound definitions. Entries with `shadowtls = true` auto-expand.";
+            };
+            urltest = mkOption {
+              type = types.bool;
+              default = true;
+              description = "Wrap group in urltest + selector.";
+            };
+            inMainPool = mkOption {
+              type = types.bool;
+              default = true;
+              description = "Include in top-level proxy-select.";
+            };
           };
-          urltest = mkOption {
-            type = types.bool;
-            default = true;
-            description = "Wrap group in urltest + selector.";
-          };
-          inMainPool = mkOption {
-            type = types.bool;
-            default = true;
-            description = "Include in top-level proxy-select.";
-          };
-        };
-      });
+        }
+      );
       default = { };
       description = "Outbound groups for the config generator.";
     };
@@ -329,10 +340,14 @@ in
     };
 
     # ── Geo ruleset ─────────────────────────────────────────────────
-    geoCnPath = mkOption {
-      type = types.path;
-      default = ../../data/geo-cn.json;
-      description = "Path to the CN geo ruleset.";
+    geoCnUrl = mkOption {
+      type = types.str;
+      default = "https://rules.sui.pics/singbox/rule-sets/cn.json";
+      description = ''
+        URL of the CN geo rule-set (sing-box source format), fetched at
+        runtime and cached in cache_file. The download detour defaults to
+        proxy-select; override via extraGeneratorArgs.geoCnDownloadDetour.
+      '';
     };
 
     # ── Clash API ───────────────────────────────────────────────────
@@ -427,27 +442,27 @@ in
       wantedBy = [ "multi-user.target" ];
       conflicts = cfg.conflictServices;
 
-      serviceConfig =
-        {
-          ExecStart = "${singBoxPkg}/bin/sing-box run -c ${configPath}";
-          ExecStartPre =
-            [ "+${dnsBootstrapScript}" ]
-            ++ lib.optional clashOn secretInjectionScript
-            ++ [ "${singBoxPkg}/bin/sing-box check -c ${configPath}" ];
-          ExecStopPost = "${dnsBootstrapScript}";
-          Restart = "on-failure";
-          RestartSec = 5;
-          LimitNOFILE = 65536;
-          AmbientCapabilities = capabilities;
-          CapabilityBoundingSet = capabilities;
-          StateDirectory = cfg.serviceName;
-        }
-        // lib.optionalAttrs clashOn {
-          RuntimeDirectory = cfg.serviceName;
-        }
-        // lib.optionalAttrs cfg.dns.setSystemResolver {
-          ExecStartPost = "+${dnsRestoreScript}";
-        };
+      serviceConfig = {
+        ExecStart = "${singBoxPkg}/bin/sing-box run -c ${configPath}";
+        ExecStartPre = [
+          "+${dnsBootstrapScript}"
+        ]
+        ++ lib.optional clashOn secretInjectionScript
+        ++ [ "${singBoxPkg}/bin/sing-box check -c ${configPath}" ];
+        ExecStopPost = "${dnsBootstrapScript}";
+        Restart = "on-failure";
+        RestartSec = 5;
+        LimitNOFILE = 65536;
+        AmbientCapabilities = capabilities;
+        CapabilityBoundingSet = capabilities;
+        StateDirectory = cfg.serviceName;
+      }
+      // lib.optionalAttrs clashOn {
+        RuntimeDirectory = cfg.serviceName;
+      }
+      // lib.optionalAttrs cfg.dns.setSystemResolver {
+        ExecStartPost = "+${dnsRestoreScript}";
+      };
     };
 
     # ── Networking ──────────────────────────────────────────────────

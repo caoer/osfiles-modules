@@ -159,7 +159,5 @@ lib.mkIf (cfg.enable && ecfg.enable && tp.enable) {
           };
         };
       };
-
-    geoCnPath = "${./data/geo-cn.json}";
   };
 }
