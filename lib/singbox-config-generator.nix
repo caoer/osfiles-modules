@@ -276,13 +276,38 @@ let
   ];
 
   # ── Top-level urltest + selector ──────────────────────────────────
-  mainPoolMembers = lib.concatMap (
-    name:
-    if groupInMainPool name then
-      if groupHasUrltest name then [ name ] else (groupResolved name).allTags
+  # Loud failure over silent success: dnsDetour, finalOutbound, and
+  # geoCnDownloadDetour all default to proxy-select, so an empty main
+  # pool would emit urltest-all with zero members — sing-box rejects
+  # that only at runtime (`sing-box check`), long after the build
+  # reported success. Groups with zero outbounds are excluded (their
+  # selector is never emitted — including them would leave a dangling
+  # tag reference); a fully empty pool throws at eval time.
+  mainPoolMembers =
+    let
+      members = lib.concatMap (
+        name:
+        let
+          tags = (groupResolved name).allTags;
+        in
+        if !(groupInMainPool name) || tags == [ ] then
+          [ ]
+        else if groupHasUrltest name then
+          [ name ]
+        else
+          tags
+      ) groupNames;
+    in
+    if members == [ ] then
+      throw ''
+        singbox-config-generator: main proxy pool is empty — urltest-all and
+        proxy-select would have zero members, which sing-box rejects only at
+        runtime. Declare at least one outboundGroup with inMainPool = true and
+        a non-empty `outbounds` list (osf.sing-box-gateway.outboundGroups /
+        osf.gateway.edge.tproxy.outboundGroups).
+      ''
     else
-      [ ]
-  ) groupNames;
+      members;
 
   urltestOutbound = {
     type = "urltest";
