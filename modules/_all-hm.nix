@@ -14,7 +14,7 @@
     ./glow/glow.nix
     ./lazygit/lazygit.nix
     (import ./nixvim/nixvim.nix {
-      cnixvimPackage = cnixvimFlake.packages.${pkgs.system}.default;
+      cnixvimPackages = cnixvimFlake.packages.${pkgs.system};
     })
     ./starship/starship.nix
     ./tmux/tmux.nix

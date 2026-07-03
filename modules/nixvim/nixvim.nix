@@ -5,8 +5,8 @@
 # reference in staging-repos) that builds neovim with zt customization
 # modules layered on top. We just consume the package.
 #
-# cnixvimPackage is injected by _all-hm.nix from the flake input.
-{ cnixvimPackage }:
+# cnixvimPackages is injected by _all-hm.nix from the flake input.
+{ cnixvimPackages }:
 {
   config,
   lib,
@@ -20,10 +20,23 @@ in
   options.osf.nixvim = {
     enable = lib.mkEnableOption "NixVim (cnixvim) as the sole editor";
 
+    variant = lib.mkOption {
+      type = lib.types.enum [
+        "default"
+        "server"
+      ];
+      default = "default";
+      description = ''
+        cnixvim package variant. "default" is the workstation build
+        (khanelivim standard profile, ~13 GB closure); "server" is the
+        small-host build (basic profile + zt trims, ~1.3 GB closure).
+      '';
+    };
+
     package = lib.mkOption {
       type = lib.types.package;
-      default = cnixvimPackage;
-      defaultText = lib.literalExpression "cnixvim.packages.\${system}.default";
+      default = cnixvimPackages.${cfg.variant};
+      defaultText = lib.literalExpression "cnixvim.packages.\${system}.\${variant}";
       description = "The cnixvim neovim package.";
     };
   };
