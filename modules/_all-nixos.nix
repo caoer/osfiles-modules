@@ -6,6 +6,7 @@
 {
   imports = [
     ./member-base.nix
+    ./media-tools.nix
     ./ucc/ucc.nixos.nix
     (import ./paseo/paseo.nixos.nix { inherit paseoFlake; })
     ./sing-box-client/sing-box-client.nixos.nix

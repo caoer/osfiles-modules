@@ -100,9 +100,9 @@
     sops
     age
 
-    # Media — yazi A/V preview plugins call /run/current-system/sw/bin/ffmpeg
-    # by absolute path, so ffmpeg must be a system package, not home.packages.
-    ffmpeg
+    # Media — full ffmpeg for yazi A/V preview is opt-in via
+    # osf.mediaPreview.enable (modules/media-tools.nix); off by default to keep
+    # the ~410 MiB decode/GUI closure off headless boxes.
 
     # Containers
     docker-compose
