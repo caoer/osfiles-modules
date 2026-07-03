@@ -86,12 +86,27 @@ in
     };
 
     # One-shot auth on first boot / key rotation. Uses sops secret.
+    #
+    # Cutover race, two faces (2026-07-03): on sing-box gateways both DNS
+    # (:53 inbound) AND the data path to api.tailscale.com (CN hosts reach
+    # it only through the warm tproxy chain) come up with sing-box. This
+    # oneshot has no Restart=, so one race = permanently failed unit
+    # (activation status 4). Signatures: 'read udp 127.0.0.1:53: connection
+    # refused' (volcengine-gz, DNS face) and 'Post api.tailscale.com/...:
+    # EOF' (volcengine-sh, cold-data-path face). Guards: (a) order after
+    # the sing-box gateway service when present — its start job completes
+    # only after the ExecStartPost dig-poll, so this covers BOTH faces;
+    # (b) a bounded ExecStartPre resolver wait for the poll's give-up
+    # fallback, crash windows, and non-gateway hosts (DNS face only) —
+    # loud failure after the budget, never a silent race.
     systemd.services.tailscale-auth = {
       description = "Tailscale auto-auth";
       after = [
         "network-online.target"
         "tailscaled.service"
-      ];
+      ]
+      ++ lib.optional (config.osf.sing-box-gateway.enable or false
+      ) "${config.osf.sing-box-gateway.serviceName}.service";
       wants = [
         "network-online.target"
         "tailscaled.service"
@@ -101,6 +116,17 @@ in
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
+        ExecStartPre = pkgs.writeShellScript "tailscale-auth-wait-dns" ''
+          for i in $(seq 1 30); do
+            if ${pkgs.glibc.bin}/bin/getent hosts api.tailscale.com >/dev/null 2>&1; then
+              exit 0
+            fi
+            echo "tailscale-auth: waiting for DNS (api.tailscale.com), attempt $i/30"
+            sleep 1
+          done
+          echo "tailscale-auth: DNS still not resolving api.tailscale.com after 30s" >&2
+          exit 1
+        '';
         ExecStart = pkgs.writeShellScript "tailscale-auth" ''
           # --reset makes this declarative: always converge to the flags below,
           # regardless of current BackendState (fixes stale "Running" + logged-out).
