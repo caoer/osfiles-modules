@@ -118,7 +118,7 @@ in
         RemainAfterExit = true;
         ExecStartPre = pkgs.writeShellScript "tailscale-auth-wait-dns" ''
           for i in $(seq 1 30); do
-            if ${pkgs.glibc.bin}/bin/getent hosts api.tailscale.com >/dev/null 2>&1; then
+            if ${pkgs.getent}/bin/getent hosts api.tailscale.com >/dev/null 2>&1; then
               exit 0
             fi
             echo "tailscale-auth: waiting for DNS (api.tailscale.com), attempt $i/30"
