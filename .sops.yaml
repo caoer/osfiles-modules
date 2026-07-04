@@ -24,6 +24,22 @@ keys:
   - &zt_lax       age182wxn7gf0kwxq6jrdtr2jx4rykqz5x2k2cs869hzs9x5zzvxffyswwxady
   - &cos_stex_builder age19fmutc3a4pypasypaplwte4jte2zk9j0n8zey93c5dqsdzshc9pqt67p25
 
+  # --- Member guests (microvm UCC consumers on rs-lax-{1,2}) ---
+  - &andrew_lax   age1s35u87hxwcv0tq6a2hhdtj42g7kq37zxjc8452wutgv64x7e84ds5rjm37
+  - &ann_lax      age1qks6vmtl0w079tp0rc8tvfv752a4qv53k4g97xtz7agf6339tgsqn06ccg
+  - &hua_lax      age1au9s64y2hly9wlhmw70ycycs3c9200gznd3etc5dh3rrqus6ruxqtudfm6
+  - &jesse_lax    age14nk3mcnr8w7ceeyq5jd4rc5kat23zemq3vgh0ye4pdchz0u8mq7qgdypl2
+  - &jiabao_lax   age1e3juajs0zhtts9arymycp2h36dlmne89elgld3kqewt8rf8hjfmssmzh7l
+  - &kyle_lax     age1pcndl5yp3huxcr6f36zv43lvst4t5kmld3qt3rvwqay2s8wtjsusxpsc8a
+  - &mike_lax     age1ez4trptcm56wfknke0g8w074h2sx7699gasjnhx7zahjdaf88ckqsxldt7
+  - &oscar_lax    age158n87shtzj80tju59zx2xf39p9cak4ttzs7m79jx27p5yhe4aaus6yf4a3
+  - &ply_lax      age1jzujfqjzvqf2v0csuquh0ztxrhjpczqfk04klyxk7m6fqvcffdmsz9854f
+  - &rachel_lax   age1tdzad9c26t0du4r0ja9m3y3er9pvkuctajlr3hfza8wwjrwqhdysdnwezg
+  # wanqiang_lax HELD — ssh-to-age emits a bad-bech32-checksum recipient for its
+  # host pubkey; sops rejects (0/15 vs andrew 15/15). Needs host key regen. See commit.
+  - &yujing_lax   age1s0r2gs4uee24ceta49uetydr0ppcrwjaatjsn884yzxnjvqk8d3ql5wgk3
+  - &zhangluo_lax age12m4jg0xsf34ftqyvhzhpguv8ykx82xn4l707av7tn3r3q8hsr9kqcw5gdn
+
 creation_rules:
   - path_regex: secrets/.*\.yaml$
     key_groups:
@@ -34,3 +50,15 @@ creation_rules:
           - *yangming
           - *zt_lax
           - *cos_stex_builder
+          - *andrew_lax
+          - *ann_lax
+          - *hua_lax
+          - *jesse_lax
+          - *jiabao_lax
+          - *kyle_lax
+          - *mike_lax
+          - *oscar_lax
+          - *ply_lax
+          - *rachel_lax
+          - *yujing_lax
+          - *zhangluo_lax

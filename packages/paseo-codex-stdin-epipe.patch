@@ -1,0 +1,45 @@
+diff --git a/packages/server/src/server/agent/providers/codex/app-server-transport.ts b/packages/server/src/server/agent/providers/codex/app-server-transport.ts
+index e99360bf3..3c3733d94 100644
+--- a/packages/server/src/server/agent/providers/codex/app-server-transport.ts
++++ b/packages/server/src/server/agent/providers/codex/app-server-transport.ts
+@@ -175,6 +175,14 @@ export class CodexAppServerClient {
+       });
+     });
+ 
++    // EPIPE guard: the app-server can die (SIGTERM/crash) while a request is
++    // mid-write; without an error listener the stream error becomes an
++    // uncaught exception and crashes the whole daemon. Pending requests are
++    // rejected by the child "exit" handler.
++    child.stdin.on("error", (err) => {
++      this.logger.warn({ err }, "Codex app-server stdin error");
++    });
++
+     child.stderr.on("data", (chunk) => {
+       this.stderrBuffer += chunk.toString();
+       if (this.stderrBuffer.length > STDERR_BUFFER_LIMIT) {
+@@ -222,7 +230,11 @@ export class CodexAppServerClient {
+     const id = this.nextId++;
+     const payload: JsonRpcRequest = { id, method, params };
+     const serialized = JSON.stringify(payload);
+-    this.child.stdin.write(`${serialized}\n`);
++    try {
++      this.child.stdin.write(`${serialized}\n`);
++    } catch (err) {
++      return Promise.reject(err instanceof Error ? err : new Error(String(err)));
++    }
+     return new Promise((resolve, reject) => {
+       const timer = setTimeout(() => {
+         this.pending.delete(id);
+@@ -245,7 +257,11 @@ export class CodexAppServerClient {
+       return;
+     }
+     const payload: JsonRpcNotification = { method, params };
+-    this.child.stdin.write(`${JSON.stringify(payload)}\n`);
++    try {
++      this.child.stdin.write(`${JSON.stringify(payload)}\n`);
++    } catch (err) {
++      this.logger.warn({ err }, "Codex app-server notify failed");
++    }
+   }
+ 
+   async dispose(): Promise<void> {
