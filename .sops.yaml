@@ -35,8 +35,7 @@ keys:
   - &oscar_lax    age158n87shtzj80tju59zx2xf39p9cak4ttzs7m79jx27p5yhe4aaus6yf4a3
   - &ply_lax      age1jzujfqjzvqf2v0csuquh0ztxrhjpczqfk04klyxk7m6fqvcffdmsz9854f
   - &rachel_lax   age1tdzad9c26t0du4r0ja9m3y3er9pvkuctajlr3hfza8wwjrwqhdysdnwezg
-  # wanqiang_lax HELD — ssh-to-age emits a bad-bech32-checksum recipient for its
-  # host pubkey; sops rejects (0/15 vs andrew 15/15). Needs host key regen. See commit.
+  - &wanqiang_lax age1dl3ed5mx2sftzuzmhuygdrw2pgln0f9kx4537qz08umd08z5cvuszhr0jt
   - &yujing_lax   age1s0r2gs4uee24ceta49uetydr0ppcrwjaatjsn884yzxnjvqk8d3ql5wgk3
   - &zhangluo_lax age12m4jg0xsf34ftqyvhzhpguv8ykx82xn4l707av7tn3r3q8hsr9kqcw5gdn
 
@@ -60,5 +59,6 @@ creation_rules:
           - *oscar_lax
           - *ply_lax
           - *rachel_lax
+          - *wanqiang_lax
           - *yujing_lax
           - *zhangluo_lax
