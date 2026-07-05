@@ -16,6 +16,10 @@ in
         global = {
           hide_env_diff = true;
           log_format = "";
+          # Agent fleets spawn dozens of panes at once; concurrent .envrc
+          # loads contend and cross direnv's default 5s warning threshold
+          # even though each load is sub-second in isolation.
+          warn_timeout = "30s";
         };
       };
       stdlib = builtins.readFile ./sops-stdlib.sh;
