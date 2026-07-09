@@ -64,6 +64,7 @@ let
         { id = "meituan/longcat-2.0"; label = "Meituan: LongCat-2.0"; }
         { id = "minimax/minimax-m3"; label = "MiniMax: MiniMax M3"; }
         { id = "z-ai/glm-5.2"; label = "Z.AI: GLM 5.2"; }
+        { id = "x-ai/grok-4.3"; label = "xAI: Grok 4.3"; }
         { id = "x-ai/grok-4.5"; label = "xAI: Grok 4.5"; }
       ];
     };
