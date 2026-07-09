@@ -317,6 +317,7 @@ in
       features ? { dictation = { enabled = false; }; voiceMode = { enabled = false; }; },
       browserTools ? { enabled = false; },
       enableTerminalAgentHooks ? false,
+      authPasswordHash ? null,
     }:
     pkgs.writeText "paseo-base-${name}.json" (builtins.toJSON {
       version = 1;
@@ -328,6 +329,8 @@ in
         autoArchiveAfterMerge = false;
         appendSystemPrompt = "";
         cors = { allowedOrigins = [ "https://app.paseo.sh" ]; };
+      } // pkgs.lib.optionalAttrs (authPasswordHash != null) {
+        auth = { password = authPasswordHash; };
       };
       app = { baseUrl = "https://app.paseo.sh"; };
       agents = { providers = { }; };
@@ -347,6 +350,15 @@ in
       type = lib.types.attrsOf lib.types.anything;
       default = { endpoint = "paseo-relay.innopals.com:443"; useTls = true; };
       description = "Relay config (endpoint, useTls, enabled).";
+    };
+    authPasswordHash = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        daemon.auth.password — bcrypt hash ($2a/$2b/$2y, cost 12) of the
+        daemon password. Required when listen is non-loopback. Generate:
+        htpasswd -nbBC 12 "" '<password>' | cut -d: -f2. null = no auth.
+      '';
     };
     defaultLauncher = lib.mkOption {
       type = lib.types.nullOr lib.types.str;

@@ -130,7 +130,7 @@ let
       uccBinDir = "${home}/.local/share/ucc/bin";
       baseConfigFile = agentLib.mkPaseoBaseConfig {
         inherit name;
-        inherit (pcfg) listen relay features browserTools enableTerminalAgentHooks;
+        inherit (pcfg) listen relay features browserTools enableTerminalAgentHooks authPasswordHash;
       };
     in
     agentLib.mkPaseoConfigGenScript {

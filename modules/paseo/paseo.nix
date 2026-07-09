@@ -34,7 +34,7 @@ let
     uccBinDir = "${home}/.local/share/ucc/bin";
     baseConfigFile = agentLib.mkPaseoBaseConfig {
       name = config.home.username;
-      inherit (cfg.paseoConfig) listen relay features browserTools enableTerminalAgentHooks;
+      inherit (cfg.paseoConfig) listen relay features browserTools enableTerminalAgentHooks authPasswordHash;
     };
     inherit (cfg.paseoConfig) defaultLauncher providerOverrides profilePresets;
   };
