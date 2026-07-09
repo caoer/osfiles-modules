@@ -31,6 +31,42 @@ let
         { id = "qwen3-coder-next"; label = "Qwen 3 Coder Next"; }
       ];
     };
+    # ZenMux (https://zenmux.ai) — multi-provider router with an
+    # Anthropic-compatible endpoint; model ids are vendor-prefixed
+    # (anthropic/claude-opus-4.8, not claude-opus-4.8). Catalog: the ≥500k-context
+    # subset of scripts/fetch-zenmux-models.sh output. No isDefault on purpose:
+    # this one catalog serves every *-zenmux-* profile, and each wrapper already
+    # pins its own family via ANTHROPIC_MODEL — a shared default would override
+    # the pinned model on launch (grok-zenmux-* launching opus).
+    zenmux = {
+      label = "ZenMux";
+      disallowedTools = [ "WebSearch" ];
+      models = [
+        { id = "x-ai/grok-4.2-fast"; label = "xAI: Grok 4.2 Fast"; }
+        { id = "openai/gpt-5.5"; label = "OpenAI: GPT-5.5"; }
+        { id = "openai/gpt-5.5-pro"; label = "OpenAI: GPT-5.5 Pro"; }
+        { id = "google/gemini-3.5-flash"; label = "Google: Gemini 3.5 Flash"; }
+        { id = "google/gemini-3.1-pro-preview"; label = "Google: Gemini 3.1 Pro Preview"; }
+        { id = "google/gemini-3.1-flash-lite"; label = "Google: Gemini 3.1 Flash Lite"; }
+        { id = "xiaomi/mimo-v2.5-pro"; label = "Xiaomi: MiMo-V2.5-Pro"; }
+        { id = "openai/gpt-4.1"; label = "OpenAI: GPT-4.1"; }
+        { id = "openai/gpt-4.1-mini"; label = "OpenAI: GPT-4.1 Mini"; }
+        { id = "openai/gpt-4.1-nano"; label = "OpenAI: GPT-4.1 Nano"; }
+        { id = "qwen/qwen3.7-max"; label = "Qwen: Qwen3.7-Max"; }
+        { id = "qwen/qwen3.7-plus"; label = "Qwen: Qwen3.7-Plus"; }
+        { id = "qwen/qwen3.6-flash"; label = "Qwen: Qwen3.6 Flash"; }
+        { id = "qwen/qwen3-coder-plus"; label = "Qwen: Qwen3-Coder-Plus"; }
+        { id = "anthropic/claude-opus-4.8"; label = "Anthropic: Claude Opus 4.8"; }
+        { id = "anthropic/claude-sonnet-5"; label = "Anthropic: Claude Sonnet 5"; }
+        { id = "anthropic/claude-fable-5"; label = "Anthropic: Claude Fable 5"; }
+        { id = "deepseek/deepseek-v4-pro"; label = "DeepSeek: DeepSeek V4 Pro"; }
+        { id = "deepseek/deepseek-v4-flash"; label = "DeepSeek: DeepSeek V4 Flash"; }
+        { id = "meituan/longcat-2.0"; label = "Meituan: LongCat-2.0"; }
+        { id = "minimax/minimax-m3"; label = "MiniMax: MiniMax M3"; }
+        { id = "z-ai/glm-5.2"; label = "Z.AI: GLM 5.2"; }
+        { id = "x-ai/grok-4.5"; label = "xAI: Grok 4.5"; }
+      ];
+    };
   };
 in
 {
@@ -223,17 +259,22 @@ in
         "pi": { "enabled": false }
       }')
 
-      # Auto-match model presets by profile-name prefix: profiles are named
-      # <model-family>-<provider-suffix> (glm-zai, glm52-zai, glm-vol, …) and
-      # preset keys ARE the model families, so any discovered provider whose id
-      # starts with a preset key gets that preset's model catalog. Provider
+      # Auto-match model presets by profile-name prefix or hyphen segment:
+      # profiles are named <model-family>-<provider-suffix> (glm-zai, glm52-zai,
+      # glm-vol, …) or <family>-<router>-<user> (glm-zenmux-zt), and preset keys
+      # are model families OR routers. A preset key matches when the provider id
+      # starts with it or contains it as a hyphen-bounded segment; the LONGEST
+      # matching key wins, so glm-zenmux-zt gets the zenmux catalog
+      # (vendor-prefixed ids the router expects), not the ZAI glm one. Provider
       # fields win over the preset (command/extends stay), and the preset's
       # label is dropped — five glm-* providers must not all read "ZAI (GLM)".
       # Explicit profilePresets below still overrides (preset-wins, incl. label).
       AUTO_PRESETS='${builtins.toJSON modelPresets}'
       PROVIDERS=$(echo "$PROVIDERS" | ${pkgs.jq}/bin/jq --argjson auto "$AUTO_PRESETS" '
         . as $base | reduce keys[] as $k ($base;
-          ($auto | to_entries | map(select(.key as $p | $k | startswith($p))) | first) as $m
+          ($auto | to_entries | map(select(.key as $p
+            | ($k | startswith($p)) or ($k | contains("-" + $p + "-")) or ($k | endswith("-" + $p))))
+           | sort_by(.key | length) | last) as $m
           | if $m then .[$k] = (($m.value | del(.label)) * .[$k]) else . end
         )')
 
