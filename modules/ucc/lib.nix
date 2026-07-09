@@ -317,6 +317,7 @@ in
       features ? { dictation = { enabled = false; }; voiceMode = { enabled = false; }; },
       browserTools ? { enabled = false; },
       enableTerminalAgentHooks ? false,
+      autoArchiveAfterMerge ? false,
       authPasswordHash ? null,
     }:
     pkgs.writeText "paseo-base-${name}.json" (builtins.toJSON {
@@ -326,7 +327,7 @@ in
         inherit relay;
         inherit browserTools enableTerminalAgentHooks;
         mcp = { injectIntoAgents = true; };
-        autoArchiveAfterMerge = false;
+        inherit autoArchiveAfterMerge;
         appendSystemPrompt = "";
         cors = { allowedOrigins = [ "https://app.paseo.sh" ]; };
       } // pkgs.lib.optionalAttrs (authPasswordHash != null) {
@@ -350,6 +351,11 @@ in
       type = lib.types.attrsOf lib.types.anything;
       default = { endpoint = "paseo-relay.innopals.com:443"; useTls = true; };
       description = "Relay config (endpoint, useTls, enabled).";
+    };
+    autoArchiveAfterMerge = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "daemon.autoArchiveAfterMerge (auto-archive worktree agents once their PR merges).";
     };
     authPasswordHash = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
