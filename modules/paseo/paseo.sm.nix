@@ -91,48 +91,8 @@ in
     };
 
     paseoConfig = lib.mkOption {
-      type = lib.types.nullOr (lib.types.submodule {
-        options = {
-          listen = lib.mkOption {
-            type = lib.types.str;
-            default = "127.0.0.1:6767";
-            description = "daemon.listen address:port.";
-          };
-          relay = lib.mkOption {
-            type = lib.types.attrsOf lib.types.anything;
-            default = { endpoint = "paseo-relay.innopals.com:443"; useTls = true; };
-            description = "Relay config (endpoint, useTls, enabled).";
-          };
-          defaultLauncher = lib.mkOption {
-            type = lib.types.nullOr lib.types.str;
-            default = null;
-            description = ''
-              Profile name for the default claude provider. null = ucc-auto.
-              E.g. "opus48" → command is ucc-opus48, excluded from auto-discovery.
-            '';
-          };
-          features = lib.mkOption {
-            type = lib.types.attrsOf lib.types.anything;
-            default = { dictation = { enabled = false; }; voiceMode = { enabled = false; }; };
-            description = "Feature flags (dictation, voiceMode).";
-          };
-          providerOverrides = lib.mkOption {
-            type = lib.types.attrsOf lib.types.anything;
-            default = { };
-            description = "Per-provider overrides deep-merged onto discovered providers.";
-          };
-          profilePresets = lib.mkOption {
-            type = lib.types.attrsOf lib.types.str;
-            default = { };
-            example = { zai = "glm"; qwen = "qwen"; };
-            description = ''
-              Maps discovered profile names to model presets (agentLib.modelPresets).
-              When ucc-<name> is discovered and <name> has a preset, the preset's
-              model catalog (models, label, disallowedTools) is merged in.
-            '';
-          };
-        };
-      });
+      # Shared schema — ONE definition across nixos/sm/hm (agentLib).
+      type = lib.types.nullOr (lib.types.submodule { options = agentLib.paseoConfigOptions lib; });
       default = null;
       description = ''
         Structured paseo config — dynamic provider discovery from ucc-*
@@ -178,7 +138,7 @@ in
         uccBinDir = "${home}/.local/share/ucc/bin";
         baseConfigFile = agentLib.mkPaseoBaseConfig {
           name = "foreign";
-          inherit (cfg.paseoConfig) listen relay features;
+          inherit (cfg.paseoConfig) listen relay features browserTools enableTerminalAgentHooks;
         };
         inherit (cfg.paseoConfig) defaultLauncher providerOverrides profilePresets;
       };

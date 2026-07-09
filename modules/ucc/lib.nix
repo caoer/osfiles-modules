@@ -258,12 +258,15 @@ in
       listen ? "127.0.0.1:6767",
       relay ? { endpoint = "paseo-relay.innopals.com:443"; useTls = true; },
       features ? { dictation = { enabled = false; }; voiceMode = { enabled = false; }; },
+      browserTools ? { enabled = false; },
+      enableTerminalAgentHooks ? false,
     }:
     pkgs.writeText "paseo-base-${name}.json" (builtins.toJSON {
       version = 1;
       daemon = {
         inherit listen;
         inherit relay;
+        inherit browserTools enableTerminalAgentHooks;
         mcp = { injectIntoAgents = true; };
         autoArchiveAfterMerge = false;
         appendSystemPrompt = "";
@@ -273,4 +276,64 @@ in
       agents = { providers = { }; };
       inherit features;
     });
+
+  # Shared paseoConfig submodule options — ONE schema for all three platform
+  # modules (paseo.nixos.nix, paseo.sm.nix, paseo.nix HM). Fields map 1:1 onto
+  # mkPaseoBaseConfig (daemon block) + mkPaseoConfigGenScript (providers).
+  paseoConfigOptions = lib: {
+    listen = lib.mkOption {
+      type = lib.types.str;
+      default = "127.0.0.1:6767";
+      description = "daemon.listen address:port.";
+    };
+    relay = lib.mkOption {
+      type = lib.types.attrsOf lib.types.anything;
+      default = { endpoint = "paseo-relay.innopals.com:443"; useTls = true; };
+      description = "Relay config (endpoint, useTls, enabled).";
+    };
+    defaultLauncher = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        Profile name for the default claude provider. null = ucc-auto.
+        E.g. "opus48" → command is ucc-opus48, and that wrapper is
+        excluded from the auto-discovered extra providers.
+      '';
+    };
+    features = lib.mkOption {
+      type = lib.types.attrsOf lib.types.anything;
+      default = { dictation = { enabled = false; }; voiceMode = { enabled = false; }; };
+      description = "Feature flags (dictation, voiceMode).";
+    };
+    browserTools = lib.mkOption {
+      type = lib.types.attrsOf lib.types.anything;
+      default = { enabled = false; };
+      description = "daemon.browserTools (agent browser automation).";
+    };
+    enableTerminalAgentHooks = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "daemon.enableTerminalAgentHooks (hooks for terminal-launched agents).";
+    };
+    providerOverrides = lib.mkOption {
+      type = lib.types.attrsOf lib.types.anything;
+      default = { };
+      example = { glm = { additionalModels = [{ id = "glm-5.1"; label = "glm-5.1"; }]; }; };
+      description = ''
+        Per-provider overrides deep-merged onto discovered providers.
+        Use for additionalModels, custom labels, or force-enabling a
+        provider the scan would otherwise skip.
+      '';
+    };
+    profilePresets = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
+      example = { zai = "glm"; qwen = "qwen"; };
+      description = ''
+        Maps discovered profile names to model presets (agentLib.modelPresets).
+        When ucc-<name> is discovered and <name> has a preset, the preset's
+        model catalog (models, label, disallowedTools) is merged in.
+      '';
+    };
+  };
 }
