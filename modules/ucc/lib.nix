@@ -147,7 +147,8 @@ in
   # --- Dynamic paseo config generation (provider discovery) ---
   #
   # Generates a script that discovers installed ucc-* wrappers at daemon start,
-  # builds the agents.providers block, merges with a nix-generated base config,
+  # builds the agents.providers block (model presets auto-matched by profile
+  # name prefix — glm* → glm catalog), merges with a nix-generated base config,
   # and writes ~/.paseo/config.json. Eliminates duplication between R2/DO profile
   # data and the static paseo JSON — the UCC installer (which syncs from the
   # worker DO) is the single source of truth for available profiles.
@@ -221,6 +222,20 @@ in
         "opencode": { "enabled": false },
         "pi": { "enabled": false }
       }')
+
+      # Auto-match model presets by profile-name prefix: profiles are named
+      # <model-family>-<provider-suffix> (glm-zai, glm52-zai, glm-vol, …) and
+      # preset keys ARE the model families, so any discovered provider whose id
+      # starts with a preset key gets that preset's model catalog. Provider
+      # fields win over the preset (command/extends stay), and the preset's
+      # label is dropped — five glm-* providers must not all read "ZAI (GLM)".
+      # Explicit profilePresets below still overrides (preset-wins, incl. label).
+      AUTO_PRESETS='${builtins.toJSON modelPresets}'
+      PROVIDERS=$(echo "$PROVIDERS" | ${pkgs.jq}/bin/jq --argjson auto "$AUTO_PRESETS" '
+        . as $base | reduce keys[] as $k ($base;
+          ($auto | to_entries | map(select(.key as $p | $k | startswith($p))) | first) as $m
+          | if $m then .[$k] = (($m.value | del(.label)) * .[$k]) else . end
+        )')
 
       # Apply model presets to matching discovered profiles
       PRESETS='${resolvedPresetsJson}'
