@@ -2,8 +2,23 @@
 #
 # Combines: base settings (nix, sshd, fail2ban, nftables, zsh), CLI tools,
 # and docker. All values use lib.mkDefault so per-owner repos can override.
-{ lib, pkgs, ... }:
 {
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+{
+  # On microvm guests (DD-IX pattern), /home is a virtiofs mount that appears
+  # only once systemd is up — but stage-2 activation (which createHome's) runs
+  # BEFORE systemd, so home dirs land on the hidden tmpfs root or fail with
+  # EACCES, and home-manager/ucc/paseo all fail on every boot. Re-assert home
+  # dirs via tmpfiles: systemd-tmpfiles-setup runs at sysinit after
+  # local-fs.target (⊇ home.mount) and before any home-manager service.
+  systemd.tmpfiles.rules = lib.mapAttrsToList (
+    name: u: "d ${u.home} ${u.homeMode} ${name} ${u.group} -"
+  ) (lib.filterAttrs (_: u: u.isNormalUser && u.createHome) config.users.users);
+
   # --- Nix daemon settings ---
   nix = {
     settings = {
