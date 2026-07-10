@@ -45,6 +45,9 @@ let
         { id = "x-ai/grok-4.2-fast"; label = "xAI: Grok 4.2 Fast"; }
         { id = "openai/gpt-5.5"; label = "OpenAI: GPT-5.5"; }
         { id = "openai/gpt-5.5-pro"; label = "OpenAI: GPT-5.5 Pro"; }
+        { id = "openai/gpt-5.6-luna"; label = "OpenAI: GPT-5.6 Luna"; }
+        { id = "openai/gpt-5.6-sol"; label = "OpenAI: GPT-5.6 Sol"; }
+        { id = "openai/gpt-5.6-terra"; label = "OpenAI: GPT-5.6 Terra"; }
         { id = "google/gemini-3.5-flash"; label = "Google: Gemini 3.5 Flash"; }
         { id = "google/gemini-3.1-pro-preview"; label = "Google: Gemini 3.1 Pro Preview"; }
         { id = "google/gemini-3.1-flash-lite"; label = "Google: Gemini 3.1 Flash Lite"; }
