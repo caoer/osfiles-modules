@@ -127,50 +127,13 @@ in
       echo "ucc: updating $CURRENT → $DESIRED"
       export ENCRYPTION_PASSWORD
 
-      # The installer appends PATH/source lines to ~/.zshrc. When home-manager
-      # owns that path it is a read-only store symlink, so the installer would
-      # fail. We desymlink temporarily for the install step only, then restore
-      # the HM symlink (including on failure — trap below). Leaving a regular
-      # file behind is what caused the recurring `just deploy` failure:
-      #   Existing file '~/.zshrc.backup' would be clobbered by backing up '~/.zshrc'
-      # Installer RC appends are redundant under osf.ucc (sessionPath already
-      # includes ~/.local/bin); discard them when restoring the link.
-      ZSHRC_HM_TARGET=""
-      TMPSCRIPT=""
-      restore_hm_zshrc() {
-        if [ -n "$ZSHRC_HM_TARGET" ]; then
-          if [ -e "$ZSHRC_HM_TARGET" ] || [ -L "$ZSHRC_HM_TARGET" ]; then
-            rm -f "${home}/.zshrc"
-            ln -s "$ZSHRC_HM_TARGET" "${home}/.zshrc"
-            echo "ucc: restored home-manager .zshrc symlink → $ZSHRC_HM_TARGET"
-          else
-            # Store path GC'd or missing — drop the regular file so the next
-            # home-manager switch can recreate the link without backup clobber.
-            rm -f "${home}/.zshrc"
-            echo "ucc: WARN: HM .zshrc target gone ($ZSHRC_HM_TARGET); removed regular file — re-run home-manager switch" >&2
-          fi
-          ZSHRC_HM_TARGET=""
-        fi
-        if [ -n "$TMPSCRIPT" ]; then
-          rm -f "$TMPSCRIPT"
-          TMPSCRIPT=""
-        fi
-      }
-      trap restore_hm_zshrc EXIT
-
-      if [ -L "${home}/.zshrc" ]; then
-        ZSHRC_HM_TARGET=$(readlink "${home}/.zshrc")
-        cp -L "${home}/.zshrc" "${home}/.zshrc.tmp"
-        mv "${home}/.zshrc.tmp" "${home}/.zshrc"
-      fi
-      # cp -L preserves the store file's 444 mode — the copy is read-only even
-      # for its owner and the installer's RC append fails. Make writable.
-      if [ -f "${home}/.zshrc" ] && [ ! -L "${home}/.zshrc" ]; then
-        chmod u+w "${home}/.zshrc"
-      fi
+      # Do not touch ~/.zshrc here. The UCC installer (ccc-statusd worker
+      # template) skips nix-managed / read-only shell RCs with a warning;
+      # desymlinking broke home-manager (backup clobber on next deploy).
 
       # Download then execute — avoids curl|bash where pipe exit codes get lost.
       TMPSCRIPT=$(mktemp /tmp/ucc-install.XXXXXX)
+      trap 'rm -f "$TMPSCRIPT"' EXIT
       curl -fsSL "$UCC_INSTALLER_URL" -o "$TMPSCRIPT"
       bash "$TMPSCRIPT"
 
