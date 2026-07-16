@@ -227,8 +227,16 @@ in
         for wrapper in "$UCC_BIN"/ucc-*; do
           [ -x "$wrapper" ] || continue
           wname="''${wrapper##*/ucc-}"
-          # Sanitize: paseo requires provider IDs matching /^[a-z][a-z0-9-]*$/
-          wname=$(echo "$wname" | ${pkgs.coreutils}/bin/tr '_' '-')
+          # paseo requires provider IDs matching /^[a-z][a-z0-9-]*$/. Lowercase
+          # + underscores->hyphens, then SKIP anything still invalid. A single
+          # bad id (e.g. a stray path-derived profile "Users" -> "Users") makes
+          # paseo reject the ENTIRE config.json, bricking the daemon — drop the
+          # offender instead of letting it poison every other provider.
+          wname=$(echo "$wname" | ${pkgs.coreutils}/bin/tr 'A-Z_' 'a-z-')
+          if ! echo "$wname" | ${pkgs.gnugrep}/bin/grep -qE '^[a-z][a-z0-9-]*$'; then
+            echo "paseo-gen-config: skipping invalid provider id '$wname' (from $wrapper)" >&2
+            continue
+          fi
 
           # Skip built-ins and the default launcher itself
           case "$wname" in
