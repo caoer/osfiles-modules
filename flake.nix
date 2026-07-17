@@ -143,6 +143,7 @@
         {
           paseo = paseoPkg;
           default = paseoPkg;
+          kimi-code = pkgs.callPackage ./packages/kimi-code.nix { };
         }
         // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
           codex = pkgs.callPackage ./packages/codex.nix { };
