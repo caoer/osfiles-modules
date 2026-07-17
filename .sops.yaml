@@ -38,6 +38,7 @@ keys:
   - &wanqiang_lax age1dl3ed5mx2sftzuzmhuygdrw2pgln0f9kx4537qz08umd08z5cvuszhr0jt
   - &yujing_lax   age1s0r2gs4uee24ceta49uetydr0ppcrwjaatjsn884yzxnjvqk8d3ql5wgk3
   - &zhangluo_lax age12m4jg0xsf34ftqyvhzhpguv8ykx82xn4l707av7tn3r3q8hsr9kqcw5gdn
+  - &huizhang_lax age1cq9sg3as7r45aj0h2fyngz2c5srl3n68v72c38wz5zzk55fcdv2sxc8dmm
 
 creation_rules:
   - path_regex: secrets/.*\.yaml$
@@ -62,3 +63,4 @@ creation_rules:
           - *wanqiang_lax
           - *yujing_lax
           - *zhangluo_lax
+          - *huizhang_lax
