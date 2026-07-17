@@ -6,6 +6,7 @@
   lib,
   stdenv,
   fetchurl,
+  autoPatchelfHook,
 }:
 
 let
@@ -48,6 +49,15 @@ stdenv.mkDerivation {
   dontUnpack = true;
   dontBuild = true;
   dontConfigure = true;
+  # Bun-compiled single-file executable: the JS bundle is embedded in the
+  # binary — stripping corrupts it.
+  dontStrip = true;
+
+  # The prebuilt ELF targets generic linux (/lib64 interpreter, glibc,
+  # libstdc++) — NixOS refuses it unpatched ("Could not start dynamically
+  # linked executable"). autoPatchelfHook rewrites interpreter + rpath.
+  nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [ autoPatchelfHook ];
+  buildInputs = lib.optionals stdenv.hostPlatform.isLinux [ (lib.getLib stdenv.cc.cc) ];
 
   installPhase = ''
     runHook preInstall
