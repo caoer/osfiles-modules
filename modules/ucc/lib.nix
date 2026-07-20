@@ -31,6 +31,21 @@ let
         { id = "qwen3-coder-next"; label = "Qwen 3 Coder Next"; }
       ];
     };
+    # MiniMax (https://api.minimax.io) — Anthropic-compatible coding plan.
+    # WebSearch is Anthropic server-side only; MiniMax agents get web_search via
+    # the minimax-coding-plan-mcp injected by the UCC launcher (MINIMAX_API_KEY /
+    # MINIMAX_API_HOST on the profile). Auto-matches minimax-us / minimax-vol / …
+    # by the minimax- prefix (longest-key segment rules still prefer zenmux when
+    # both match, e.g. minimax/minimax-m3 inside the zenmux catalog is just a
+    # model id, not a provider name).
+    minimax = {
+      label = "MiniMax";
+      disallowedTools = [ "WebSearch" ];
+      models = [
+        { id = "MiniMax-M3[1m]"; label = "MiniMax M3 (1M)"; isDefault = true; }
+        { id = "minimax-m3"; label = "MiniMax M3"; }
+      ];
+    };
     # ZenMux (https://zenmux.ai) — multi-provider router with an
     # Anthropic-compatible endpoint; model ids are vendor-prefixed
     # (anthropic/claude-opus-4.8, not claude-opus-4.8). Catalog: the ≥500k-context
