@@ -138,22 +138,7 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          # Bound paseo's npm-ci build MEMORY at the definition so it holds
-          # fleet-wide. Foreign+HM and NixOS hosts build their home-manager
-          # closure ON THE TARGET; paseo's `npm ci` was OOM-SIGKILLed under
-          # parallel builds on 8–16GB hosts (wire-v2 flip, 2026-07-20). Capping
-          # the V8 heap makes npm ci GC instead of ballooning past the OOM-killer
-          # threshold, and serializing this derivation drops its concurrent
-          # footprint — so paseo builds on-target without OOM. `default`/`paseo`/
-          # `paseo-speech` all inherit this (paseo-speech overrides paseoPkg).
-          paseoPkg = (paseo.packages.${system}.paseo).overrideAttrs (old: {
-            NODE_OPTIONS =
-              nixpkgs.lib.concatStringsSep " " (
-                nixpkgs.lib.optional (old ? NODE_OPTIONS && old.NODE_OPTIONS != "") old.NODE_OPTIONS
-                ++ [ "--max-old-space-size=2048" ]
-              );
-            enableParallelBuilding = false;
-          });
+          paseoPkg = paseo.packages.${system}.paseo;
         in
         {
           paseo = paseoPkg;
