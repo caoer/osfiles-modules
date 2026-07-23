@@ -15,16 +15,21 @@ in
           splitDiff = "always";
           sidePanelWidth = 0.26;
           expandFocusedSidePanel = true;
+          # Palette-indexed ANSI names, not frozen hex. lazygit rides the
+          # terminal's active scheme (wezterm switches it per theme-family +
+          # macOS light/dark), so these follow every theme and repaint live on
+          # a switch. `default` = terminal fg, `reverse` = adaptive high-contrast
+          # selection — the two that made hardcoded hex unreadable in light mode.
           theme = {
-            activeBorderColor = [ "#89dceb" "bold" ];
-            inactiveBorderColor = [ "#a6adc8" ];
-            optionsTextColor = [ "#89b4fa" ];
-            selectedLineBgColor = [ "#313244" ];
-            cherryPickedCommitBgColor = [ "#45475a" ];
-            cherryPickedCommitFgColor = [ "#89dceb" ];
-            unstagedChangesColor = [ "#f38ba8" ];
-            defaultFgColor = [ "#cdd6f4" ];
-            searchingActiveBorderColor = [ "#f9e2af" ];
+            activeBorderColor = [ "cyan" "bold" ];
+            inactiveBorderColor = [ "default" ];
+            optionsTextColor = [ "blue" ];
+            selectedLineBgColor = [ "reverse" ];
+            cherryPickedCommitBgColor = [ "cyan" ];
+            cherryPickedCommitFgColor = [ "black" ];
+            unstagedChangesColor = [ "red" ];
+            defaultFgColor = [ "default" ];
+            searchingActiveBorderColor = [ "yellow" ];
           };
         };
         promptToReturnFromSubprocess = false;
