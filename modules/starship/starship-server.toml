@@ -5,7 +5,7 @@ add_newline = false
 command_timeout = 1000
 
 format = """
-[╭](dimmed white) \
+[╭](dimmed) \
 ${env_var.YAZI_LEVEL}\
 $directory\
 ${custom.git_relative_path}\
@@ -22,7 +22,7 @@ $username\
 $hostname\
 $time\
 $line_break\
-[╰](dimmed white) \
+[╰](dimmed) \
 $character"""
 
 # Replace the "❯" symbol in the prompt with "➜"
@@ -106,7 +106,7 @@ style = "yellow"
 
 [env_var.YAZI_LEVEL]
 variable = "YAZI_LEVEL"
-format = "[↩ yazi](italic fg:#9d7cd8) "
+format = "[↩ yazi](italic purple) "
 
 [username]
 style_user = "bold green"
@@ -132,7 +132,7 @@ style = "yellow"
 [time]
 disabled = false
 format = "[$time]($style)"
-style = "bold dimmed white"
+style = "bold dimmed"
 time_format = "%H:%M"
 utc_time_offset = "+8"
 
