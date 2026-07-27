@@ -132,11 +132,21 @@ in
         CURRENT=$("${localBin}/ccc-statusd" version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' | head -1 || true)
       fi
 
-      # Full-stack check: ccc-statusd version match AND node binary works.
+      # Full-stack check: ccc-statusd version match AND node binary works AND
+      # the shared claude-code bundle matches the CC version the installed
+      # daemon pairs with. Without the bundle check, an installer run that
+      # dies AFTER the daemon install but BEFORE the bundle download (cos-ucc
+      # 2026-07-27, /tmp full) leaves a state the gate reads as "current" and
+      # never repairs.
       if [ "$CURRENT" = "$DESIRED" ] && [ -x "${uccShare}/node/bin/node" ] \
          && "${uccShare}/node/bin/node" --version >/dev/null 2>&1; then
-        echo "ucc: v$DESIRED already installed, skipping"
-        exit 0
+        CC_WANT=$("${localBin}/ccc-statusd" version 2>/dev/null | grep -oP 'Claude Code \K[0-9.]+' || true)
+        CC_HAVE=$(grep -oP '"version":\s*"\K[0-9.]+' "${uccShare}/claude-code/package.json" 2>/dev/null || true)
+        if [ -z "$CC_WANT" ] || [ "$CC_HAVE" = "$CC_WANT" ]; then
+          echo "ucc: v$DESIRED already installed (claude-code ''${CC_HAVE:-unknown}), skipping"
+          exit 0
+        fi
+        echo "ucc: daemon v$DESIRED current but claude-code bundle $CC_HAVE != $CC_WANT — reinstalling"
       fi
 
       echo "ucc: updating $CURRENT → $DESIRED"
