@@ -24,11 +24,11 @@
         "khanelivim": "khanelivim"
       },
       "locked": {
-        "lastModified": 1785139809,
-        "narHash": "sha256-XUVsocmwU0cyB0xr+dERCJb/WL7pjxgCkmFr/zLDqf8=",
+        "lastModified": 1785140484,
+        "narHash": "sha256-BL8L2I76z5+k+bUmgbBuxwUoCVy7/UsP+Hr/kqQhe28=",
         "owner": "caoer",
         "repo": "cnixvim",
-        "rev": "c1b8ab749dc13d5ec2ad254ca6db5cb6a296ee3f",
+        "rev": "abe9eb687cc6d0211ec524487294bc573a0e743f",
         "type": "github"
       },
       "original": {
