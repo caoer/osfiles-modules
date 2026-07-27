@@ -2,6 +2,10 @@
 #
 # Combines: base settings (nix, sshd, fail2ban, nftables, zsh), CLI tools,
 # and docker. All values use lib.mkDefault so per-owner repos can override.
+#
+# tmuxSrc is closed over by flake.nix (same shape as paseo.nixos.nix's
+# paseoFlake) so the tmux below is the fork, not nixpkgs' stock build.
+{ tmuxSrc }:
 {
   config,
   lib,
@@ -86,8 +90,10 @@
     htop
     openssl
 
-    # Multiplexer + sessions
-    tmux
+    # Multiplexer + sessions. The fork, never stock tmux: this list is injected
+    # into every NixOS host, and a stock entry here wins the system buildEnv
+    # collision against the fork installed further down the list.
+    (pkgs.callPackage ../packages/tmux.nix { tmux-src = tmuxSrc; })
     sesh
 
     # Version control

@@ -39,6 +39,15 @@
     # NixVim (cnixvim) — thin wrapper over caoer/nixvim (khanelivim fork).
     # Do NOT follow nixpkgs — cnixvim lets khanelivim use its own nixpkgs.
     cnixvim.url = "github:caoer/cnixvim";
+
+    # tmux source — caoer/tmux fork master: upstream post-3.7b (the
+    # PANE_REDRAW-on-?2026l image-erasing regression is removed there) plus
+    # the zt patches. Built by packages/tmux.nix — see that file for the full
+    # root-cause story. Bump this rev to pull newer upstream via the fork.
+    tmux-src = {
+      url = "github:caoer/tmux/05a934ebdb590387d4f1454d9d380b77f35cf711";
+      flake = false;
+    };
   };
 
   outputs =
@@ -83,7 +92,7 @@
           };
 
         # System-level baseline for semi-managed dev boxes.
-        member-base = import ./modules/member-base.nix;
+        member-base = import ./modules/member-base.nix { tmuxSrc = inputs.tmux-src; };
 
         # --- Mesh/network subsystem (extracted from osfiles) ---
         # These take an `osfLib` module arg: consumers inject their private
@@ -96,7 +105,10 @@
         osf-gateway = import ./modules/net/gateway;
 
         # Default: member-base + agent NixOS modules (ucc, paseo).
-        default = import ./modules/_all-nixos.nix { paseoFlake = paseo; };
+        default = import ./modules/_all-nixos.nix {
+          paseoFlake = paseo;
+          tmuxSrc = inputs.tmux-src;
+        };
       };
 
       # Foreign (non-NixOS, system-manager) modules.
@@ -144,6 +156,9 @@
           paseo = paseoPkg;
           default = paseoPkg;
           kimi-code = pkgs.callPackage ./packages/kimi-code.nix { };
+          # The fleet's tmux. Exposed so .woodpecker.yml can build the exact
+          # derivation member-base installs and push it to cache.0xtau.com.
+          tmux = pkgs.callPackage ./packages/tmux.nix { inherit (inputs) tmux-src; };
         }
         // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
           codex = pkgs.callPackage ./packages/codex.nix { };

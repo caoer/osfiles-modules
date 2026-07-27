@@ -425,7 +425,8 @@
         "impermanence": "impermanence",
         "nixpkgs": "nixpkgs_4",
         "paseo": "paseo",
-        "sops-nix": "sops-nix"
+        "sops-nix": "sops-nix",
+        "tmux-src": "tmux-src"
       }
     },
     "rust-overlay": {
@@ -529,6 +530,23 @@
         "owner": "nix-systems",
         "ref": "future-26.11",
         "repo": "default",
+        "type": "github"
+      }
+    },
+    "tmux-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1785163739,
+        "narHash": "sha256-Z06Rw7K9A9Uos+aqKynmEb5aXlGCJIoTrTuXV0y7Tfc=",
+        "owner": "caoer",
+        "repo": "tmux",
+        "rev": "05a934ebdb590387d4f1454d9d380b77f35cf711",
+        "type": "github"
+      },
+      "original": {
+        "owner": "caoer",
+        "repo": "tmux",
+        "rev": "05a934ebdb590387d4f1454d9d380b77f35cf711",
         "type": "github"
       }
     }

@@ -1,0 +1,54 @@
+# Woodpecker CI (ci.0xdao.app) — build the fleet's tmux (packages/tmux.nix,
+# caoer/tmux fork) and push its closure to the public niks3 cache
+# (cache.0xtau.com, R2 CDN). No public cache carries this fork, so without
+# this every host compiles tmux from source on its next deploy.
+#
+# Hash identity is the point: this builds .#packages.x86_64-linux.tmux, the
+# same derivation modules/member-base.nix installs via pkgs.callPackage on
+# every NixOS host. Consumers that override this flake's nixpkgs (osfiles
+# does, via inputs.nixpkgs.follows) only substitute while their nixpkgs rev
+# matches this flake's lock. A mismatch is a cache miss, not a break — the
+# host just compiles tmux again.
+#
+# niks3_token is the fleet niks3 API control-plane token
+# (https://niks3.0xtau.com on forge-nyc-2). NAR bytes upload direct to R2 via
+# presigned URLs. Mirrors the vohive pipeline.
+when:
+  - event: push
+    branch: main
+  - event: manual
+
+steps:
+  - name: build-and-cache
+    image: nixos/nix:2.34.8
+    environment:
+      NIKS3_TOKEN:
+        from_secret: niks3_token
+    commands:
+      - |
+        cat >> /etc/nix/nix.conf <<EOF
+        experimental-features = nix-command flakes
+        accept-flake-config = true
+        EOF
+      # ^* builds out AND man — meta.outputsToInstall is [ out man ], so a
+      # host missing the man output rebuilds the whole derivation anyway.
+      - nix build '.#packages.x86_64-linux.tmux^*' -L
+      - ./result/bin/tmux -V
+      - umask 077
+      - printf '%s' "$NIKS3_TOKEN" > /tmp/niks3-token
+      - export NIKS3_AUTH_TOKEN_FILE=/tmp/niks3-token
+      - export NIKS3_SERVER_URL=https://niks3.0xtau.com
+      # Pin niks3 to the rev osfiles locks (nixpkgs' niks3 lags --pin support).
+      - nix profile install github:Mic92/niks3/780939adecefc2f84be700a6f9ae1cc9385ad240#niks3
+      # --pin takes exactly one store path and upserts, shielding the closure
+      # from the server's 30-day GC even when tmux goes untouched for months.
+      - niks3 push --pin "osf-tmux-x86_64-linux" ./result
+      - niks3 push --pin "osf-tmux-man-x86_64-linux" ./result-man
+      # A successful push is not the same as a host being able to substitute.
+      # Read back exactly what a host reads.
+      - |
+        for link in ./result ./result-man; do
+          hash=$(basename "$(readlink -f "$link")" | cut -d- -f1)
+          echo "checking https://cache.0xtau.com/$hash.narinfo"
+          nix run nixpkgs#curl -- -fsS "https://cache.0xtau.com/$hash.narinfo" | head -3
+        done
