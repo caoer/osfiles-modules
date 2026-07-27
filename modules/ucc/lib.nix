@@ -142,12 +142,18 @@ in
       echo "ucc: updating $CURRENT → $DESIRED"
       export ENCRYPTION_PASSWORD
 
+      # Disk-backed temp: /tmp is tmpfs on several hosts and routinely full
+      # (cos-stex-ucc 2026-07-27: 32G tmpfs at 100% → curl (23) on the
+      # ~300MB claude-code bundle). The installer's mktemp calls all respect
+      # TMPDIR.
+      export TMPDIR="''${TMPDIR:-/var/tmp}"
+
       # Do not touch ~/.zshrc here. The UCC installer (ccc-statusd worker
       # template) skips nix-managed / read-only shell RCs with a warning;
       # desymlinking broke home-manager (backup clobber on next deploy).
 
       # Download then execute — avoids curl|bash where pipe exit codes get lost.
-      TMPSCRIPT=$(mktemp /tmp/ucc-install.XXXXXX)
+      TMPSCRIPT=$(mktemp "$TMPDIR/ucc-install.XXXXXX")
       trap 'rm -f "$TMPSCRIPT"' EXIT
       curl -fsSL "$UCC_INSTALLER_URL" -o "$TMPSCRIPT"
       bash "$TMPSCRIPT"
