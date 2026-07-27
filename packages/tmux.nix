@@ -19,13 +19,24 @@
 # entry wins) — so the fleet compiled the fork and then ran 3.7b anyway.
 # One definition, consumed by member-base and by osfiles' basic.nix /
 # headless-cli.nix, is what keeps that from coming back.
-{ tmux, tmux-src }:
+{
+  lib,
+  stdenv,
+  tmux,
+  tmux-src,
+  jemalloc,
+}:
 tmux.overrideAttrs (old: {
   pname = "tmux";
   version = "next-3.8-zt-0.0.3";
   name = "tmux-next-3.8-zt-0.0.3";
   src = tmux-src;
   patches = [ ];
-  # Upstream master makes the jemalloc choice mandatory at configure time.
-  configureFlags = (old.configureFlags or [ ]) ++ [ "--disable-jemalloc" ];
+  buildInputs = (old.buildInputs or [ ]) ++ lib.optionals stdenv.hostPlatform.isDarwin [ jemalloc ];
+  # Upstream master makes the jemalloc choice mandatory at configure time:
+  # it considers macOS calloc(3) unreliable at zeroing and recommends
+  # jemalloc there (a10ed323). Linux keeps the system allocator.
+  configureFlags =
+    (old.configureFlags or [ ])
+    ++ [ (if stdenv.hostPlatform.isDarwin then "--enable-jemalloc" else "--disable-jemalloc") ];
 })
