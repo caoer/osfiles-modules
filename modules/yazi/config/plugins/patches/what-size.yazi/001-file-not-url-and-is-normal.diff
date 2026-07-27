@@ -1,0 +1,26 @@
+diff --git a/config/yazi/plugins/what-size.yazi/main.lua b/config/yazi/plugins/what-size.yazi/main.lua
+index 00b9109b..5d7a9033 100644
+--- a/config/yazi/plugins/what-size.yazi/main.lua
++++ b/config/yazi/plugins/what-size.yazi/main.lua
+@@ -20,8 +20,9 @@
+ local get_selected_paths = ya.sync(function(state)
+     local result = {}
+     if cx and cx.active and cx.active.selected then
+-        for _, url in pairs(cx.active.selected) do
+-            result[#result + 1] = url
++        -- #4096: nightly yields File, stable yields Url; f.url or f works on both
++        for _, f in pairs(cx.active.selected) do
++            result[#result + 1] = f.url or f
+         end
+     end
+     return result
+@@ -109,7 +110,8 @@ end)
+ -- }}}1
+ -- Get selecting state {{{1
+ local get_selected = ya.sync(function()
+-    return (not cx.active.mode.is_visual) and (#cx.active.selected ~= 0)
++    -- is_visual is deprecated on nightly (fires per status redraw, #4101)
++    return cx.active.mode.is_normal and (#cx.active.selected ~= 0)
+ end)
+ -- }}}1
+ -- Set separators {{{1

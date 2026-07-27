@@ -26,6 +26,23 @@ local function ffmpeg()
 	return sysbin("ffmpeg")
 end
 
+-- Availability gate: headless servers omit ffmpeg (osf.headlessCli.mediaPreview
+-- = false) to save ~410 MiB of A/V decode + GUI closure. Without ffmpeg the
+-- cover/waveform/metadata can't render, so skip cleanly (blank preview, no
+-- error) instead of failing. Probe once and memoize; ffmpeg() yields via
+-- fs.cha, so this may only run inside a coroutine (peek/preload).
+local ffmpeg_ok_cache = nil
+local function ffmpeg_ok()
+	if ffmpeg_ok_cache == nil then
+		local child = Command(ffmpeg()):arg({ "-version" }):stdout(Command.NULL):stderr(Command.NULL):spawn()
+		ffmpeg_ok_cache = child ~= nil
+		if child then
+			child:wait_with_output()
+		end
+	end
+	return ffmpeg_ok_cache
+end
+
 local function cache_path(job)
 	local base = ya.file_cache(job)
 	if not base then
@@ -87,6 +104,9 @@ local function generate_waveform(input, output, w, h)
 end
 
 function M:preload(job)
+	if not ffmpeg_ok() then
+		return true
+	end
 	local cache = cache_path(job)
 	if not cache then
 		return true
@@ -117,6 +137,9 @@ function M:preload(job)
 end
 
 function M:peek(job)
+	if not ffmpeg_ok() then
+		return
+	end
 	local cache = cache_path(job)
 	if not cache then
 		return fail(job, "Failed to get cache path")

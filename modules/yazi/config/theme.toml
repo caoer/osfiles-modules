@@ -1,38 +1,134 @@
 # A TOML linter such as https://taplo.tamasfe.dev/ can use this schema to validate your config.
 # If you encounter any issues, please make an issue at https://github.com/sxyazi/yazi/issues
 
+# ============================================================================
+# COLORS ARE MAPPED BY ROLE, NOT BY LITERAL VALUE
+#
+# Yazi loads exactly ONE theme.toml and applies it in BOTH appearances — the
+# [flavor] dark/light keys swap only the flavor BASE layer, and theme.toml
+# overrides sit on top of whichever one won. So a hex here is unavoidably wrong
+# in one of the two appearances. This file used to hardcode Catppuccin Mocha
+# (dark) hexes: on the light background (#e1e2e7) the teal descriptions
+# measured 1.15:1 and the pink keys 1.79:1 — illegible.
+#
+# The fix is the same convention config/tmux/themes/light/*.conf states — name
+# the ROLE and let the terminal resolve it. wezterm swaps the 16-color ANSI
+# palette per macOS appearance and tmux rides the twin palette
+# (config/wezterm/common.lua theme_families), so ANSI-named colors here make
+# yazi follow BOTH axes for free: every appearance AND all 14 families the
+# picker offers. Hexes could only ever track one family in one appearance.
+#
+#   ANSI name   dark = Tokyo Night      light = Tokyo Night Day
+#   ---------   --------------------    -----------------------
+#   red         #f7768e                 #f52a65
+#   green       #9ece6a                 #587539
+#   yellow      #e0af68                 #8c6c3e
+#   blue        #7aa2f7                 #2e7de9
+#   magenta     #bb9af7                 #9854f1
+#   cyan        #7dcfff                 #007197
+#   gray        #a9b1d6                 #6172b0   (dim foreground)
+#   darkgray    #414868                 #a1a6c5   (muted / borders)
+#   white       #c0caf5                 #6172b0   (foreground)
+#
+# Every accent lands at 3.0–4.3:1 on the light background, versus 1.15–1.79:1
+# before. `reversed = true` is used for FILLED highlights instead of an
+# explicit bg: reverse video swaps in the terminal's own default background, so
+# a highlight bar is contrast-correct by construction in any palette. ANSI-16
+# has no neutral that works as a tinted bar in both appearances (Tokyo Night
+# Day's ANSI 0/7/8 are all mid-tones), and `reversed` is what the flavor and
+# yazi's own preset already use for [help] hovered.
+# ============================================================================
+
+# Both halves are set. The flavor layer now carries exactly one thing that the
+# ANSI rewrite above cannot: `tmtheme.xml`, the syntect theme for CODE PREVIEWS.
+# tmThemes are hex-only — syntect has no notion of an ANSI palette — so the
+# preview is the one surface that genuinely needs a file per appearance. Without
+# `light`, no flavor loaded in light mode and previews fell back to yazi's
+# built-in dark highlighting on a light background.
+#
+# See flavors/coldark-cold.yazi/README.md for why this is a flavor rather than
+# `[mgr] syntect_theme` (absolute paths only, and dead whenever a flavor is
+# active — so it cannot serve both macOS and the store-copied server config).
 [flavor]
-dark = "tokyo-night"
+dark  = "tokyo-night"
+light = "coldark-cold"
 
 # : Manager {{{
 
 [mgr]
-cwd = { fg = "#94e2d5" }
-
-# Hovered
-hovered         = { fg = "#1e1e2e", bg = "#89b4fa" }
-preview_hovered = { underline = true }
+cwd = { fg = "cyan" }
 
 # Find
-find_keyword  = { fg = "#f9e2af", italic = true }
-find_position = { fg = "#f38ba8", bg = "reset", italic = true }
+find_keyword  = { fg = "yellow", italic = true }
+find_position = { fg = "red", bg = "reset", italic = true }
 
 # Marker
-marker_selected = { fg = "#a6e3a1", bg = "#a6e3a1" }
-marker_copied   = { fg = "#f9e2af", bg = "#f9e2af" }
-marker_cut      = { fg = "#f38ba8", bg = "#f38ba8" }
-
-# Tab
-tab_active   = { fg = "#1e1e2e", bg = "#cdd6f4" }
-tab_inactive = { fg = "#cdd6f4", bg = "#45475a" }
-tab_width    = 1
+marker_selected = { fg = "green", bg = "green" }
+marker_copied   = { fg = "yellow", bg = "yellow" }
+marker_cut      = { fg = "red", bg = "red" }
 
 # Border
 border_symbol = "│"
-border_style  = { fg = "#6c7086" }
+border_style  = { fg = "darkgray" }
 
-# Highlighting
+# Highlighting — inert, and kept only to document that it is. Both appearances
+# now load a flavor, and a flavor's tmtheme.xml always wins over this key. Code
+# preview colors are therefore set by flavors/{tokyo-night,coldark-cold}.yazi.
 syntect_theme = ""
+
+# Hovered row — was `[mgr] hovered`/`preview_hovered`, reclassified into
+# [indicator] (#3419). The old keys were silently dead, which is why the
+# hovered row rendered as plain reverse-video from the preset.
+#
+# `fg` + `reversed` keeps the solid blue bar this used to draw with an explicit
+# bg. Setting fg here REPLACES the row's per-cell filetype/git color (indicator
+# patches over the entity style), so the bar renders uniform rather than one
+# reversed block per color; reverse then supplies the terminal's background as
+# the text color, which no ANSI name can name in both appearances.
+[indicator]
+current = { fg = "blue", reversed = true, bold = true }
+preview = { underline = true }
+
+# Was `[mgr] tab_active`/`tab_inactive` (dead since the #2745 tab redesign;
+# tab_width is gone entirely). Active tab was fg=base/bg=text — i.e. "fill with
+# the foreground color", which is exactly plain reverse video. Inactive was a
+# fill on surface1; ANSI-16 cannot express that legibly in light mode (nothing
+# reads on Tokyo Night Day's #a1a6c5), so it degrades to dim text.
+[tabs]
+active   = { reversed = true, bold = true }
+inactive = { fg = "gray" }
+
+# Was `[status] mode_*` (dead since #1953). Upstream leaves the _alt wing to the
+# flavor, which only ever styles it in dark mode: the light flavor is a tmTheme
+# carrier and deliberately holds no colors. The _alt keys are therefore set here
+# so the mode indicator is styled in both appearances.
+[mode]
+normal_main = { fg = "blue", reversed = true, bold = true }
+select_main = { fg = "green", reversed = true, bold = true }
+unset_main  = { fg = "magenta", reversed = true, bold = true }
+normal_alt  = { fg = "blue" }
+select_alt  = { fg = "green" }
+unset_alt   = { fg = "magenta" }
+
+# Git linemode + filename styles for git.yazi — first-class plugin styling
+# (#3934) replacing the init.lua `th.git.*` assignments, which would turn into
+# a hard error the day any [git] section appeared (CustomSectionArc has no
+# __newindex) and were wiped by app:theme hot-reload. Signs are scoped to
+# TRACKED CHANGES only — empty sign = render nothing for that state, so
+# untracked/ignored/clean files stay unmarked (the "color on every row" guard).
+[git]
+modified = { fg = "blue" }
+added    = { fg = "green" }
+deleted  = { fg = "red", bold = true }
+updated  = { fg = "cyan" }
+modified_sign  = "~"
+added_sign     = "+"
+deleted_sign   = "✗"
+updated_sign   = "↑"
+untracked_sign = ""
+ignored_sign   = ""
+unknown_sign   = ""
+clean_sign     = ""
 
 # : }}}
 
@@ -40,26 +136,27 @@ syntect_theme = ""
 # : Status {{{
 
 [status]
-separator_open  = ""
-separator_close = ""
-separator_style = { fg = "#45475a", bg = "#45475a" }
+# Was separator_open/close (dead since the #2313 L/R split).
+sep_left  = { open = "", close = "" }
+sep_right = { open = "", close = "" }
 
-# Mode
-mode_normal = { fg = "#1e1e2e", bg = "#89b4fa", bold = true }
-mode_select = { fg = "#1e1e2e", bg = "#a6e3a1", bold = true }
-mode_unset  = { fg = "#1e1e2e", bg = "#f2cdcd", bold = true }
+# Overall — set here, not left to the flavor: only the dark flavor carries
+# colors, so this was unstyled in light mode.
+overall = { fg = "blue" }
 
-# Progress
-progress_label  = { fg = "#ffffff", bold = true }
-progress_normal = { fg = "#89b4fa", bg = "#45475a" }
-progress_error  = { fg = "#f38ba8", bg = "#45475a" }
+# Progress — the label was #ffffff, i.e. "maximum contrast against the gauge".
+# In light mode that role is the DARKEST value, which is the default foreground,
+# so the label leaves fg unset rather than naming a color that inverts wrongly.
+progress_label  = { bold = true }
+progress_normal = { fg = "blue", bg = "darkgray" }
+progress_error  = { fg = "red", bg = "darkgray" }
 
-# Permissions
-permissions_t = { fg = "#a6e3a1" }
-permissions_r = { fg = "#f9e2af" }
-permissions_w = { fg = "#f38ba8" }
-permissions_x = { fg = "#94e2d5" }
-permissions_s = { fg = "#6c7086" }
+# Permissions — was permissions_t/r/w/x/s (dead since #1953).
+perm_type  = { fg = "green" }
+perm_read  = { fg = "yellow" }
+perm_write = { fg = "red" }
+perm_exec  = { fg = "cyan" }
+perm_sep   = { fg = "darkgray" }
 
 # : }}}
 
@@ -67,7 +164,7 @@ permissions_s = { fg = "#6c7086" }
 # : Input {{{
 
 [input]
-border   = { fg = "#89b4fa" }
+border   = { fg = "blue" }
 title    = {}
 value    = {}
 selected = { reversed = true }
@@ -75,12 +172,22 @@ selected = { reversed = true }
 # : }}}
 
 
-# : Select {{{
+# : Pick (ex-Select) {{{
 
-[select]
-border   = { fg = "#89b4fa" }
-active   = { fg = "#f38ba8" }
+[pick]
+border   = { fg = "blue" }
+active   = { fg = "red" }
 inactive = {}
+
+# : }}}
+
+
+# : Completion {{{
+
+# Set here, not left to the flavor: only the dark flavor carries colors, so this
+# was unstyled in light mode.
+[cmp]
+border = { fg = "blue" }
 
 # : }}}
 
@@ -88,9 +195,36 @@ inactive = {}
 # : Tasks {{{
 
 [tasks]
-border  = { fg = "#89b4fa" }
+border  = { fg = "blue" }
 title   = {}
 hovered = { underline = true }
+
+# : }}}
+
+
+# : Spotter {{{
+
+# Set here, not left to the flavor: only the dark flavor carries colors, so this
+# was unstyled in light mode. tbl_cell was a fill on a dark surface upstream;
+# dim text instead, for the same ANSI-16 reason as [tabs] inactive.
+[spot]
+border   = { fg = "blue" }
+title    = { fg = "blue" }
+tbl_col  = { fg = "green" }
+tbl_cell = { fg = "magenta" }
+
+# : }}}
+
+
+# : Notify {{{
+
+# Set here, not left to the flavor: only the dark flavor carries colors, so this
+# was unstyled in light mode. Upstream maps warn→red and error→yellow;
+# corrected to the conventional severity roles here.
+[notify]
+title_info  = { fg = "green" }
+title_warn  = { fg = "yellow" }
+title_error = { fg = "red" }
 
 # : }}}
 
@@ -98,24 +232,54 @@ hovered = { underline = true }
 # : Which {{{
 
 [which]
-mask            = { bg = "#313244" }
-cand            = { fg = "#94e2d5" }
-rest            = { fg = "#9399b2" }
-desc            = { fg = "#f38ba8" }
+# 25+ g-prefixed chords read badly in the default 3 columns.
+cols            = 2
+# The mask dims the screen behind the chord list. Dimming means DARKER in dark
+# mode and LIGHTER in light mode — one ANSI name cannot be both, and on Tokyo
+# Night Day's #a1a6c5 no candidate color clears 2.4:1. The panel therefore sits
+# on the terminal background, where cand/desc/rest read at 3.0–4.3:1.
+mask            = { bg = "reset" }
+cand            = { fg = "cyan" }
+rest            = { fg = "gray" }
+desc            = { fg = "red" }
 separator       = "  "
-separator_style = { fg = "#585b70" }
+separator_style = { fg = "darkgray" }
 
 # : }}}
 
 
 # : Help {{{
 
+# Dual schema: on/run/desc/footer are the 26.5.6 names, chord/action the
+# nightly ones (#4074 palette rework). Each binary ignores the other's keys,
+# so one block serves both. This also shadows the flavor's stale [help].
+#
+# This is the pane in the screenshot that prompted the role rewrite: `run`/
+# `action` was #94e2d5 (1.15:1 on light) and `on`/`chord` #f38ba8 (1.79:1).
+# The key column is bold because red is the palette's lowest-contrast accent in
+# light mode (3.0:1) and these are short tokens.
+#
+# `footer` was fg=surface1/bg=text — "fill with the foreground color", i.e.
+# plain reverse video.
+#
+# `hovered` underlines rather than filling. Verified against the rendered SGR
+# stream: unlike [indicator] current (where the style overrides the row's
+# per-cell color, so fg+reversed draws one solid bar), here the on/chord and
+# run/action colors WIN over hovered — a bare `reversed` therefore renders the
+# row as a red block beside a cyan block, not a bar, and setting `fg` here does
+# nothing. The only uniform fill left is a `bg`, and that is what was
+# illegible: no ANSI neutral holds both red and cyan text in light mode
+# (cyan-on-#a1a6c5 is 2.3:1). Underline keeps the columns at 3.0–4.3:1 and
+# still marks the full row width. For a stronger bar, `{ reversed = true,
+# bold = true }` is the flavor's own choice — legible, but two-toned.
 [help]
-on      = { fg = "#f38ba8" }
-exec    = { fg = "#94e2d5" }
-desc    = { fg = "#9399b2" }
-hovered = { bg = "#585b70", bold = true }
-footer  = { fg = "#45475a", bg = "#cdd6f4" }
+on      = { fg = "red", bold = true }
+run     = { fg = "cyan" }
+desc    = { fg = "gray" }
+footer  = { reversed = true }
+chord   = { fg = "red", bold = true }
+action  = { fg = "cyan" }
+hovered = { underline = true, bold = true }
 
 # : }}}
 
@@ -137,29 +301,69 @@ rules = [
 	# filename recoloring, matching the pre-upgrade look.
 
 	# Images
-	{ mime = "image/*", fg = "#94e2d5" },
+	{ mime = "image/*", fg = "cyan" },
 
 	# Videos / audio
-	{ mime = "video/*", fg = "#f9e2af" },
-	{ mime = "audio/*", fg = "#f9e2af" },
+	{ mime = "video/*", fg = "yellow" },
+	{ mime = "audio/*", fg = "yellow" },
 
 	# Archives
-	{ mime = "application/zip",             fg = "#f38ba8" },
-	{ mime = "application/gzip",            fg = "#f38ba8" },
-	{ mime = "application/x-tar",           fg = "#f38ba8" },
-	{ mime = "application/x-bzip",          fg = "#f38ba8" },
-	{ mime = "application/x-bzip2",         fg = "#f38ba8" },
-	{ mime = "application/x-7z-compressed", fg = "#f38ba8" },
-	{ mime = "application/x-rar",           fg = "#f38ba8" },
+	{ mime = "application/zip",             fg = "red" },
+	{ mime = "application/gzip",            fg = "red" },
+	{ mime = "application/x-tar",           fg = "red" },
+	{ mime = "application/x-bzip",          fg = "red" },
+	{ mime = "application/x-bzip2",         fg = "red" },
+	{ mime = "application/x-7z-compressed", fg = "red" },
+	{ mime = "application/x-rar",           fg = "red" },
 
 	# Documents
-	{ mime = "application/pdf", fg = "#f38ba8" },
+	{ mime = "application/pdf", fg = "red" },
 ]
 
 
 [icon]
 # User additions layered over yazi's built-in preset icons (prepend_*).
 # Wildcard fallbacks (default file/dir, dotfiles) come from the preset.
+
+# Icon COLORS, replacing the preset's `conds` list rather than prepending to it.
+#
+# yazi ships theme-dark.toml and theme-light.toml, and its light preset really
+# does darken most icon colors (.git #00bcd4 -> #009688, .bashrc #89e051 ->
+# #447028, block/char/fifo/sock #cddc39 -> #ffc107, orphan and the file fallback
+# #ffffff -> #000000). Four entries were left IDENTICAL in both presets, and they
+# are the ones that matter most because they are the generic fallbacks:
+#
+#   dir     #03a9f4  2.0:1  on the light background -- every directory
+#   exec    #8bc34a  1.6:1
+#   link    #9e9e9e  2.1:1
+#   dummy   #f44336  2.8:1
+#
+# Replaced wholesale, not prepended: conds match in order and first-match wins,
+# so prepending `link` would shadow the preset's `orphan` rule and a broken
+# symlink would stop rendering as broken. Replacing keeps the preset's ordering
+# intact. `reset` is the default foreground -- the exact role of the preset's
+# #ffffff/#000000 pair. Glyphs are copied verbatim from the preset.
+#
+# The dirs/files/exts entries below deliberately carry no `fg`: an entry without
+# one renders in the default foreground, which is legible in both appearances by
+# definition, so those ~77 icons needed nothing.
+conds = [
+	# Special files
+	{ if = "orphan", text = "", fg = "reset" },
+	{ if = "link", text = "", fg = "gray" },
+	{ if = "block", text = "", fg = "yellow" },
+	{ if = "char", text = "", fg = "yellow" },
+	{ if = "fifo", text = "", fg = "yellow" },
+	{ if = "sock", text = "", fg = "yellow" },
+	{ if = "sticky", text = "", fg = "yellow" },
+	{ if = "dummy", text = "", fg = "red" },
+
+	# Fallback
+	{ if = "dir & hovered", text = "", fg = "blue" },
+	{ if = "dir", text = "", fg = "blue" },
+	{ if = "exec", text = "", fg = "green" },
+	{ if = "!dir", text = "", fg = "reset" },
+]
 
 prepend_dirs = [
 	{ name = "Desktop", text = "" },

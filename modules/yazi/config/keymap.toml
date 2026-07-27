@@ -2,223 +2,130 @@
 [mgr]
 keymap = [
     # Basic navigation
-    { on = [
-        "<Esc>",
-    ], run = "escape", desc = "Exit visual mode, clear selected, or cancel search" },
-    { on = [
-        "q",
-    ], run = "quit", desc = "Exit the process" },
+    { on = ["<Esc>"], run = "escape", desc = "Exit visual mode, clear selected, or cancel search" },
+    { on = ["q"], run = "quit", desc = "Exit the process" },
+    { on = ["Q"], run = "quit --no-cwd-file", desc = "Exit without cd-on-quit (skip cwd-file)" },
+    { on = ["<C-z>"], run = "suspend", desc = "Suspend the process" },
 
-    # Movement
-    { on = [
-        "k",
-    ], run = "arrow -1", desc = "Move cursor up" },
-    { on = [
-        "j",
-    ], run = "arrow 1", desc = "Move cursor down" },
-    { on = [
-        "h",
-    ], run = "leave", desc = "Go back to the parent directory" },
-    { on = [
-        "l",
-    ], run = "enter", desc = "Enter the child directory" },
+    # Movement (arrow prev/next wrap around the list)
+    { on = ["k"], run = "arrow prev", desc = "Move cursor up" },
+    { on = ["j"], run = "arrow next", desc = "Move cursor down" },
+    { on = ["<Up>"], run = "arrow prev", desc = "Move cursor up" },
+    { on = ["<Down>"], run = "arrow next", desc = "Move cursor down" },
+    # Plain `leave` everywhere except at the root of an archive-walk slot, where
+    # the parent is the cache dir — a dead end. There it steps back out to the
+    # folder holding the .dmg/.zip and re-hovers it, so `h` undoes Enter.
+    { on = ["h"], run = "plugin archive-walk -- leave", desc = "Parent dir / step out of an archive" },
+    { on = ["l"], run = "enter", desc = "Enter the child directory" },
+    { on = ["<Left>"], run = "plugin archive-walk -- leave", desc = "Parent dir / step out of an archive" },
+    { on = ["<Right>"], run = "enter", desc = "Enter the child directory" },
+    # Directory history (defaults). DuckDB column scroll moved off H/L to
+    # <C-d>/<C-u> — see the prepend below.
+    { on = ["H"], run = "back", desc = "Back to previous directory" },
+    { on = ["L"], run = "forward", desc = "Forward to next directory" },
 
     # File operations — smart-enter plugin: enter dirs, open files.
     # Prevents yazi.nvim recursion (open on dir → chooser → reopen loop).
-    { on = [
-        "<Enter>",
-    ], run = "plugin smart-enter", desc = "Enter dir / open file" },
-    { on = [
-        "o",
-    ], run = "open", desc = "Open (force, incl. dirs)" },
-    { on = [
-        "e",
-    ], run = "plugin smart-enter", desc = "Open file (same as Enter)" },
-    { on = [
-        "E",
-    ], run = "open --hovered --interactive", desc = "Open interactively" },
-    { on = [
-        "y",
-    ], run = "yank", desc = "Copy the selected files" },
-    { on = [
-        "x",
-    ], run = "yank --cut", desc = "Cut the selected files" },
-    { on = [
-        "p",
-    ], run = "paste", desc = "Paste the files" },
-    { on = [
-        "d",
-    ], run = "remove", desc = "Move the files to the trash" },
-    { on = [
-        "D",
-    ], run = "remove --permanently", desc = "Permanently delete the files" },
-    { on = [
-        "a",
-    ], run = "create", desc = "Create a file or directory" },
-    { on = [
-        "r",
-    ], run = "rename", desc = "Rename a file or directory" },
+    { on = ["<Enter>"], run = "plugin smart-enter", desc = "Enter dir / open file" },
+    { on = ["o"], run = "open", desc = "Open (force, incl. dirs)" },
+    { on = ["O"], run = "open --interactive", desc = "Open with chosen opener" },
+    { on = ["e"], run = "plugin smart-enter", desc = "Open file (same as Enter)" },
+    { on = ["E"], run = 'shell "$EDITOR %s" --block', desc = "Open with $EDITOR" },
+    { on = ["y"], run = "yank", desc = "Copy the selected files" },
+    { on = ["x"], run = "yank --cut", desc = "Cut the selected files" },
+    { on = ["p"], run = "paste", desc = "Paste the files" },
+    { on = ["P"], run = "paste --force", desc = "Paste the files (overwrite if exists)" },
+    { on = ["<C-->"], run = "hardlink", desc = "Hardlink yanked files" },
+    { on = ["d"], run = "remove", desc = "Move the files to the trash" },
+    { on = ["D"], run = "remove --permanently", desc = "Permanently delete the files" },
+    { on = ["a"], run = "create", desc = "Create a file or directory" },
+    { on = ["r"], run = "rename --cursor=before_ext", desc = "Rename a file or directory" },
+    { on = ["B"], run = "bulk_rename", desc = "Bulk rename selected files in $EDITOR" },
 
     # Selection
-    { on = [
-        "<Space>",
-    ], run = [
-        "toggle",
-        "arrow 1",
-    ], desc = "Toggle the current selection state" },
-    { on = [
-        "v",
-    ], run = "visual_mode", desc = "Enter visual mode (selection mode)" },
-    { on = [
-        "V",
-    ], run = "visual_mode --unset", desc = "Enter visual mode (unset mode)" },
-    { on = [
-        "u",
-    ], run = "unyank", desc = "Cancel yank/cut" },
+    { on = ["<Space>"], run = ["toggle", "arrow 1"], desc = "Toggle the current selection state" },
+    { on = ["v"], run = "visual_mode", desc = "Enter visual mode (selection mode)" },
+    { on = ["V"], run = "visual_mode --unset", desc = "Enter visual mode (unset mode)" },
+    { on = ["<C-a>"], run = "toggle_all --state=on", desc = "Select all files" },
+    { on = ["<C-r>"], run = "toggle_all", desc = "Invert selection of all files" },
+    { on = ["u"], run = "unyank", desc = "Cancel yank/cut" },
+
+    # Spot: metadata/preview popup (default <Tab>, which layout-cycle occupies)
+    { on = ["i"], run = "spot", desc = "Spot hovered file (metadata popup)" },
 
     # Search and filter
-    { on = [
-        "/",
-    ], run = "find --smart", desc = "Find files" },
-    { on = [
-        "n",
-    ], run = "find_arrow", desc = "Go to next found" },
-    { on = [
-        "N",
-    ], run = "find_arrow --previous", desc = "Go to previous found" },
-    { on = [
-        "f",
-    ], run = "filter --smart", desc = "Filter files" },
-    { on = [
-        "F",
-    ], run = "plugin smart-filter", desc = "Smart filter" },
-    { on = [
-        "s",
-        "n",
-    ], run = "sort natural", desc = "Sort by name (default)" },
-    { on = [
-        "s",
-        "s",
-    ], run = ["sort size --reverse=yes", "linemode size"], desc = "Sort by size" },
-    { on = [
-        "s",
-        "m",
-    ], run = ["sort mtime --reverse=yes", "linemode mtime"], desc = "Sort by modified time" },
-    { on = [
-        "s",
-        "b",
-    ], run = ["sort btime --reverse=yes", "linemode btime"], desc = "Sort by birth time" },
-    { on = [
-        "s",
-        "e",
-    ], run = "sort extension", desc = "Sort by extension" },
-    { on = [
-        "s",
-        "c",
-    ], run = 'shell "ls -ltc | less" --block --confirm', desc = "List by ctime (status change)" },
+    { on = ["/"], run = "find --smart", desc = "Find files" },
+    { on = ["n"], run = "find_arrow", desc = "Go to next found" },
+    { on = ["N"], run = "find_arrow --previous", desc = "Go to previous found" },
+    # Chorded: a bare ["f"] would be shadowed by the f-prefixed prepends below
+    # (router stops at the first on[0] match; single-key chords are excluded
+    # from the which-key candidates), so filter must live inside the family.
+    { on = ["f", "f"], run = "filter --smart", desc = "Filter files (in this dir)" },
+    { on = ["F"], run = "plugin smart-filter", desc = "Smart filter" },
+    { on = ["<C-s>"], run = "escape --search", desc = "Cancel the ongoing search" },
+    { on = ["s", "n"], run = "sort natural", desc = "Sort by name (default)" },
+    { on = ["s", "s"], run = ["sort size --reverse=yes", "linemode size"], desc = "Sort by size" },
+    { on = ["s", "m"], run = ["sort mtime --reverse=yes", "linemode mtime"], desc = "Sort by modified time" },
+    { on = ["s", "b"], run = ["sort btime --reverse=yes", "linemode btime"], desc = "Sort by birth time" },
+    { on = ["s", "e"], run = "sort extension", desc = "Sort by extension" },
+    { on = ["s", "c"], run = 'shell "ls -ltc | less" --block', desc = "List by ctime (status change)" },
 
     # View
-    { on = [
-        "<Tab>",
-    ], run = "plugin layout-cycle", desc = "Cycle layout: responsive → preview → list" },
-    { on = [
-        ".",
-    ], run = "hidden toggle", desc = "Toggle the visibility of hidden files" },
-    { on = [
-        "w",
-    ], run = "tasks:show", desc = "Show task manager" },
-    { on = [
-        "?",
-    ], run = "help", desc = "Open help" },
+    { on = ["<Tab>"], run = "plugin layout-cycle", desc = "Cycle layout: responsive → preview → list" },
+    { on = ["."], run = "hidden toggle", desc = "Toggle the visibility of hidden files" },
+    { on = ["w"], run = "tasks:show", desc = "Show task manager" },
+    { on = ["?"], run = "help", desc = "Open help" },
 
-    # Quick navigation
-    { on = [
-        "<C-u>",
-    ], run = "arrow -50%", desc = "Half page up" },
-    { on = [
-        "<C-d>",
-    ], run = "arrow 50%", desc = "Half page down" },
-    { on = [
-        "<C-n>",
-    ], run = "seek 5", desc = "Scroll preview down" },
-    { on = [
-        "<C-p>",
-    ], run = "seek -5", desc = "Scroll preview up" },
-    { on = [
-        "<Backspace>",
-    ], run = "back", desc = "Go back to previous directory" },
+    # Quick navigation. <C-u>/<C-d> belong to DuckDB column scroll (prepend
+    # below); paging lives on the full-page defaults instead.
+    { on = ["<C-b>"], run = "arrow -100%", desc = "Page up" },
+    { on = ["<C-f>"], run = "arrow 100%", desc = "Page down" },
+    { on = ["<C-n>"], run = "seek 5", desc = "Scroll preview down" },
+    { on = ["<C-p>"], run = "seek -5", desc = "Scroll preview up" },
+    { on = ["<Backspace>"], run = "back", desc = "Go back to previous directory" },
 
     # Symlinks (yank with y, navigate to target, then link)
-    { on = [
-        "-",
-    ], run = "link", desc = "Symlink (absolute)" },
-    { on = [
-        "_",
-    ], run = "link --relative", desc = "Symlink (relative)" },
+    { on = ["-"], run = "link", desc = "Symlink (absolute)" },
+    { on = ["_"], run = "link --relative", desc = "Symlink (relative)" },
 
     # Shell
-    { on = [
-        "S",
-    ], run = "plugin what-size", desc = "Calculate directory sizes" },
-    { on = [
-        "!",
-    ], run = "shell \"$SHELL\" --block --confirm", desc = "Open shell here" },
-    { on = [
-        "R",
-    ], run = "mgr:refresh", desc = "Refresh file list" },
+    { on = ["S"], run = "plugin what-size", desc = "Calculate directory sizes" },
+    # `!` lives only in the prepend below — a keymap copy colliding with a
+    # prepend is silently dropped by the section merge, so it was dead weight.
+    { on = ["R"], run = "mgr:refresh", desc = "Refresh file list" },
 
     # Copy paths
-    { on = [
-        "c",
-        "c",
-    ], run = "copy path", desc = "Copy absolute path" },
-    { on = [
-        "c",
-        "d",
-    ], run = "copy dirname", desc = "Copy directory path" },
-    { on = [
-        "c",
-        "f",
-    ], run = "copy filename", desc = "Copy filename" },
-    { on = [
-        "c",
-        "n",
-    ], run = "copy name_without_ext", desc = "Copy filename without extension" },
+    { on = ["c", "c"], run = "copy path", desc = "Copy absolute path" },
+    { on = ["c", "d"], run = "copy dirname", desc = "Copy directory path" },
+    { on = ["c", "f"], run = "copy filename", desc = "Copy filename" },
+    { on = ["c", "n"], run = "copy name_without_ext", desc = "Copy filename without extension" },
 
     # Tabs
-    { on = [
-        "t",
-    ], run = "tab_create --current", desc = "Create a new tab" },
-    { on = [
-        "[",
-    ], run = "tab_switch -1 --relative", desc = "Switch to previous tab" },
-    { on = [
-        "]",
-    ], run = "tab_switch 1 --relative", desc = "Switch to next tab" },
-    { on = [
-        "{",
-    ], run = "tab_swap -1", desc = "Swap current tab with previous" },
-    { on = [
-        "}",
-    ], run = "tab_swap 1", desc = "Swap current tab with next" },
+    { on = ["t"], run = "tab_create --current", desc = "Create a new tab" },
+    { on = ["["], run = "tab_switch -1 --relative", desc = "Switch to previous tab" },
+    { on = ["]"], run = "tab_switch 1 --relative", desc = "Switch to next tab" },
+    { on = ["{"], run = "tab_swap -1", desc = "Swap current tab with previous" },
+    { on = ["}"], run = "tab_swap 1", desc = "Swap current tab with next" },
+    { on = ["1"], run = "tab_switch 0", desc = "Switch to first tab" },
+    { on = ["2"], run = "tab_switch 1", desc = "Switch to second tab" },
+    { on = ["3"], run = "tab_switch 2", desc = "Switch to third tab" },
+    { on = ["4"], run = "tab_switch 3", desc = "Switch to fourth tab" },
+    { on = ["5"], run = "tab_switch 4", desc = "Switch to fifth tab" },
+    { on = ["6"], run = "tab_switch 5", desc = "Switch to sixth tab" },
+    { on = ["7"], run = "tab_switch 6", desc = "Switch to seventh tab" },
+    { on = ["8"], run = "tab_switch 7", desc = "Switch to eighth tab" },
+    { on = ["9"], run = "tab_switch 8", desc = "Switch to ninth tab" },
 
     # Jumping
-    { on = [
-        "g",
-        "g",
-    ], run = "arrow -99999999", desc = "Move cursor to the top" },
-    { on = [
-        "G",
-    ], run = "arrow 99999999", desc = "Move cursor to the bottom" },
-    { on = [
-        "~",
-    ], run = "cd ~", desc = "Go to home directory" },
-    { on = [
-        "z",
-    ], run = "plugin zoxide", desc = "Jump with zoxide" },
-    { on = [
-        "Z",
-    ], run = "plugin zoxide --args=interactive", desc = "Jump with zoxide (interactive)" },
+    { on = ["g", "g"], run = "arrow top", desc = "Move cursor to the top" },
+    { on = ["G"], run = "arrow bot", desc = "Move cursor to the bottom" },
+    { on = ["g", "f"], run = "follow", desc = "Follow hovered symlink" },
+    { on = ["g", "<Space>"], run = "cd --interactive", desc = "Jump to a path interactively" },
+    { on = ["~"], run = "cd ~", desc = "Go to home directory" },
+    { on = ["z"], run = "plugin zoxide", desc = "Jump with zoxide" },
+    # --args was removed upstream (#2299) and the preset zoxide plugin is always
+    # interactive anyway — the old Z was a byte-for-byte duplicate of z.
+    { on = ["Z"], run = "plugin fzf", desc = "Jump to a file/directory via fzf" },
 ]
 
 [[mgr.prepend_keymap]]
@@ -233,29 +140,38 @@ run = "plugin lazygit"
 desc = "run lazygit"
 
 # DuckDB keybindings
+# Column scroll lives on <C-d>/<C-u> (vim-style) so H/L keep their default
+# back/forward history meaning. On non-data files these no-op: the plugin only
+# bumps its scrolled_columns state and emits a lateral-scroll seek that plain
+# previewers ignore. Use <C-b>/<C-f> to page the file list.
+# The `--` is mandatory on yazi 26.x: without it `-1`/`-open` are parsed as flags
+# to `plugin`, job.args[1] arrives nil, and every binding falls through to the
+# opener — so the scroll keys launched the DuckDB UI instead of scrolling
+# columns, and `g o` opened the UI too. Same convention as archive-walk/fg.
 [[mgr.prepend_keymap]]
-on = "H"
-run = "plugin duckdb -1"
+on = "<C-u>"
+run = "plugin duckdb -- -1"
 desc = "Scroll one column to the left"
 
 [[mgr.prepend_keymap]]
-on = "L"
-run = "plugin duckdb +1"
+on = "<C-d>"
+run = "plugin duckdb -- +1"
 desc = "Scroll one column to the right"
 
 [[mgr.prepend_keymap]]
 on = ["g", "o"]
-run = "plugin duckdb -open"
+run = "plugin duckdb -- -open"
 desc = "Open with duckdb"
 
 [[mgr.prepend_keymap]]
 on = ["g", "u"]
-run = "plugin duckdb -ui"
+run = "plugin duckdb -- -ui"
 desc = "Open with duckdb ui"
 
 # fg: find files/content recursively (fd+fzf / rg+fzf)
+# f f belongs to filter (main keymap); the fzf filename jumper rides f n.
 [[mgr.prepend_keymap]]
-on = ["f", "f"]
+on = ["f", "n"]
 run = "plugin fg -- fzf"
 desc = "Find file by filename"
 
@@ -264,23 +180,38 @@ on = ["f", "g"]
 run = "plugin fg"
 desc = "find file by content (fuzzy match)"
 
-# Run current file
+# Built-in recursive search: flattens results into an operable list (yank /
+# delete / paste work on it), unlike the fg fzf-jump above. <C-s> cancels.
+[[mgr.prepend_keymap]]
+on = ["f", "s"]
+run = "search --via=fd"
+desc = "Search files by name (fd, operable list)"
+
+[[mgr.prepend_keymap]]
+on = ["f", "S"]
+run = "search --via=rg"
+desc = "Search files by content (ripgrep, operable list)"
+
+# Run current file. %h = hovered path, shell-escaped by the splatter — the old
+# $0 form stopped being bound in v25.12.29 and the whole $-family is gone on
+# nightly (#4108), so every shell bind here speaks %-formatting.
 [[mgr.prepend_keymap]]
 on = "X"
-run = 'shell "$0; echo; echo [Done] Press enter to continue.; read" --block --confirm'
+run = 'shell "%h; echo; echo [Done] Press enter to continue.; read" --block'
 desc = "Run current file"
 
 # Copy file path to system pasteboard
 [[mgr.prepend_keymap]]
 on = ["c", "p"]
 # yank.sh handles pbcopy / xclip / xsel / OSC52 — works on mac, Linux, and over SSH.
-run = 'shell "cat \"$0\" | \"$HOME/.config/tmux/yank.sh\"" --confirm'
+run = 'shell "cat %h | \"$HOME/.config/tmux/yank.sh\""'
 desc = "Copy file content to pasteboard"
 
-# Copy path relative to project root (farthest git ancestor)
+# Copy path relative to project root (farthest git ancestor) — folded into
+# git-root.yazi (`copy` arg); a separate copy-git-path plugin never existed.
 [[mgr.prepend_keymap]]
 on = ["c", "C"]
-run = "plugin copy-git-path"
+run = "plugin git-root -- copy"
 desc = "Copy path relative to project root (farthest git)"
 
 # cd back to the root of the current Git repository (farthest ancestor)
@@ -291,7 +222,7 @@ desc = "cd to project root (farthest git)"
 
 [[mgr.prepend_keymap]]
 on = ["g", "l"]
-run = 'shell "lnav \"$@\"" --block --confirm'
+run = 'shell "lnav %s" --block'
 desc = "Open with lnav"
 
 [[mgr.prepend_keymap]]
@@ -299,105 +230,45 @@ on = ["c", "m"]
 run = "plugin chmod"
 desc = "Chmod on selected files"
 
+# Detach every disk image archive-walk has attached (macOS). Enter attaches them
+# read-only on demand; nothing evicts automatically, so this is the way back out.
+[[mgr.prepend_keymap]]
+on = ["g", "m"]
+run = "plugin archive-walk -- unmount"
+desc = "Detach all archive-walk disk images"
+
+# Pack every selected folder into its own read-only compressed image — the
+# inverse of Enter. The images land in the directory you are standing in, not
+# beside the sources, so selecting folders in one place and walking to an
+# archive folder before pressing the key is the intended gesture. With nothing
+# selected it packs the hovered folder. macOS prompts for squashfs (2.5x smaller
+# and 9x faster, but drops xattrs) or DMG (keeps them); Linux can only make
+# squashfs, so it skips the prompt. `g P` names the format outright.
+[[mgr.prepend_keymap]]
+on = ["g", "p"]
+run = "plugin archive-walk -- pack"
+desc = "Pack selected folders into images here"
+
+[[mgr.prepend_keymap]]
+on = ["g", "P"]
+run = "plugin archive-walk -- pack dmg"
+desc = "Pack selected folders into DMGs here"
+
+# `set -- %s` re-establishes the selected files as shell positionals: %s splats
+# the shell-escaped paths, so $#/$1/$2 work again (the old implicit argv is
+# gone). `shell --block -- <raw>` avoids double-escaping the quotes.
 [[mgr.prepend_keymap]]
 on = ["g", "d"]
-run = 'shell "if [ $# -eq 2 ]; then diff -u \"$1\" \"$2\" | delta --paging=always; else echo Select exactly 2 files; read; fi" --block --confirm'
+run = 'shell --block -- set -- %s; if [ $# -eq 2 ]; then diff -u "$1" "$2" | delta --paging=always; else echo Select exactly 2 files; read; fi'
 desc = "Diff two selected files (delta)"
 
 [[mgr.prepend_keymap]]
 on = ["g", "D"]
-run = 'shell "if [ $# -eq 2 ]; then nvim -d \"$1\" \"$2\"; else nvim +DiffviewOpen; fi" --block --confirm'
+run = 'shell --block -- set -- %s; if [ $# -eq 2 ]; then nvim -d "$1" "$2"; else nvim +DiffviewOpen; fi'
 desc = "Diff selected files (nvim -d) or git diff (diffview)"
 
-[tasks]
-keymap = [
-    { on = [
-        "<Esc>",
-    ], run = "close", desc = "Hide the task manager" },
-    { on = [
-        "q",
-    ], run = "close", desc = "Hide the task manager" },
-    { on = [
-        "k",
-    ], run = "arrow -1", desc = "Move cursor up" },
-    { on = [
-        "j",
-    ], run = "arrow 1", desc = "Move cursor down" },
-]
-
-[select]
-keymap = [
-    { on = [
-        "<Esc>",
-    ], run = "close", desc = "Cancel selection" },
-    { on = [
-        "<Enter>",
-    ], run = "close --submit", desc = "Submit the selection" },
-    { on = [
-        "k",
-    ], run = "arrow -1", desc = "Move cursor up" },
-    { on = [
-        "j",
-    ], run = "arrow 1", desc = "Move cursor down" },
-]
-
-[input]
-keymap = [
-    { on = [
-        "<Esc>",
-    ], run = "close", desc = "Cancel input" },
-    { on = [
-        "<Enter>",
-    ], run = "close --submit", desc = "Submit the input" },
-
-    # Text editing
-    { on = [
-        "<Backspace>",
-    ], run = "backspace", desc = "Delete character before cursor" },
-    { on = [
-        "<Delete>",
-    ], run = "delete --cut", desc = "Delete character after cursor" },
-    { on = [
-        "<Left>",
-    ], run = "move -1", desc = "Move cursor left" },
-    { on = [
-        "<Right>",
-    ], run = "move 1", desc = "Move cursor right" },
-    { on = [
-        "<Home>",
-    ], run = "move -999", desc = "Move to start of line" },
-    { on = [
-        "<End>",
-    ], run = "move 999", desc = "Move to end of line" },
-    { on = [
-        "<C-a>",
-    ], run = "move -999", desc = "Move to start of line" },
-    { on = [
-        "<C-e>",
-    ], run = "move 999", desc = "Move to end of line" },
-    { on = [
-        "<C-w>",
-    ], run = "backspace --cut", desc = "Delete word before cursor" },
-    { on = [
-        "<C-u>",
-    ], run = "kill bol", desc = "Delete to start of line" },
-    { on = [
-        "<C-k>",
-    ], run = "kill eol", desc = "Delete to end of line" },
-]
-
-[help]
-keymap = [
-    { on = [
-        "<Esc>",
-    ], run = "escape", desc = "Clear the filter, or hide the help" },
-    { on = [
-        "q",
-    ], run = "close", desc = "Hide the help" },
-    { on = [
-        "k",
-    ], run = "arrow -1", desc = "Move cursor up" },
-    { on = [
-        "j",
-    ], run = "arrow 1", desc = "Move cursor down" },
-]
+# [input], [pick] (ex-[select]), [tasks], and [help] intentionally absent: the
+# presets apply. Input keeps the vim-mode editor (i/v/undo/word motions) and,
+# on the next stable, input history — Esc goes to normal mode, Esc Esc cancels.
+# Help is a command palette on nightly (#4074): the preset's <Enter> runs the
+# highlighted action, and a replaced section would lose that.

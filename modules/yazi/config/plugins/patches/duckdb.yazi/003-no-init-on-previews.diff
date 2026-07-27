@@ -1,0 +1,16 @@
+--- a/main.lua
++++ b/main.lua
+@@ -281,7 +281,12 @@
+ 	local width = math.max((job.area and job.area.w * 3 or 80), 80)
+ 	local height = math.max((job.area and job.area.h or 25), 25)
+ 
+-	local args = {}
++	-- Skip ~/.duckdbrc. output_is_valid() below treats ANY stderr as fatal, and the
++	-- CLI prints "-- Loading resources from <rc>" to stderr whenever an init file
++	-- exists, which would kill every preview. Previews need nothing from the rc:
++	-- sqlite/duckdb files open without autoload, and the excel branch loads spatial
++	-- explicitly. Openers still use the rc — `-ui` genuinely needs autoload.
++	local args = { "-no-init" }
+ 
+ 	if file_type == "duckdb" then
+ 		table.insert(args, "-readonly")

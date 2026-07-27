@@ -1,0 +1,14 @@
+--- a/main.lua
++++ b/main.lua
+@@ -114,7 +114,10 @@
+ 		command = string.format('%s-cmd "%s"', command, query)
+ 		ya.dbg("command final: " .. tostring(command))
+ 	else
+-		command = command .. tostring(hovered_url)
++		-- Existing database file (duckdb/sqlite): open read-only. Opening a file
++		-- just to look at it must never mutate it — matters for forensic copies,
++		-- where a WAL checkpoint would alter the artifact.
++		command = command .. "-readonly " .. tostring(hovered_url)
+ 	end
+ 
+ 	if arg ~= "-open" then

@@ -73,6 +73,8 @@ local extension_map = {
 	xlsx = "excel",
 	duckdb = "duckdb",
 	db = "duckdb",
+	sqlite = "duckdb",
+	sqlite3 = "duckdb",
 }
 
 local function get_extension(filename)
@@ -112,7 +114,10 @@ local duckdb_opener = ya.sync(function(_, arg)
 		command = string.format('%s-cmd "%s"', command, query)
 		ya.dbg("command final: " .. tostring(command))
 	else
-		command = command .. tostring(hovered_url)
+		-- Existing database file (duckdb/sqlite): open read-only. Opening a file
+		-- just to look at it must never mutate it — matters for forensic copies,
+		-- where a WAL checkpoint would alter the artifact.
+		command = command .. "-readonly " .. tostring(hovered_url)
 	end
 
 	if arg ~= "-open" then
@@ -276,7 +281,12 @@ local function run_query(job, query, target, file_type)
 	local width = math.max((job.area and job.area.w * 3 or 80), 80)
 	local height = math.max((job.area and job.area.h or 25), 25)
 
-	local args = {}
+	-- Skip ~/.duckdbrc. output_is_valid() below treats ANY stderr as fatal, and the
+	-- CLI prints "-- Loading resources from <rc>" to stderr whenever an init file
+	-- exists, which would kill every preview. Previews need nothing from the rc:
+	-- sqlite/duckdb files open without autoload, and the excel branch loads spatial
+	-- explicitly. Openers still use the rc — `-ui` genuinely needs autoload.
+	local args = { "-no-init" }
 
 	if file_type == "duckdb" then
 		table.insert(args, "-readonly")

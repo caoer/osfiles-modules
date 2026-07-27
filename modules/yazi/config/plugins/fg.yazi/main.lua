@@ -11,7 +11,10 @@ end)
 local init_ui_data = ya.sync(function(self,file_url)
 	self.opt = {"nvim", "helix", "jump"}
 	self.title = "fg"
-	self.title_color = "#82ab3a"
+	-- ANSI role name, not the upstream #82ab3a: that olive measured 2.05:1 on the
+	-- light-appearance background, and this picker's border/title/rows all used it.
+	-- See the header comment in ../../theme.toml for why colors are named here.
+	self.title_color = "green"
 	self.cursor = 0
 	self.file_url = file_url and file_url or ""
 	ui.render()
@@ -114,7 +117,9 @@ function M:entry(job)
 	local args = job.args
 	local _permit = ui.hide()
 	local cwd = state()
-	local shell_value = ya.target_family() == "windows" and "nu" or os.getenv("SHELL"):match(".*/(.*)")
+	-- $SHELL is unset under systemd units, `env -i`, and some SSH forced commands.
+	local shell_value = ya.target_family() == "windows" and "nu"
+		or ((os.getenv("SHELL") or "/bin/sh"):match("[^/]+$"))
 	local cmd_args = ""
 
 	-- 修改预览命令，让高亮行出现在中间
@@ -139,10 +144,16 @@ function M:entry(job)
 	end
 	local fd_cmd = "fd --type f --hidden --follow " .. fd_excludes
 
+	-- Mirror the fd excludes for the ripgrep content search. Add folders here.
+	local rg_excludes = " -g '!.git' -g '!node_modules' -g '!target'"
+	if cwd:match("/locus$") or cwd:match("/locus/$") then
+		rg_excludes = rg_excludes .. " -g '!.repos'"
+	end
+
 	if ya.target_family() == "windows" and args[1] == "fzf" then
 		cmd_args = [[fzf --preview="bat --color=always {}"]]
 	elseif ya.target_family() == "windows" and args[1] == "rg" then
-		local rg_prefix = [[rg  --column --line-number --no-heading --color=always --smart-case ]]
+		local rg_prefix = [[rg]] .. rg_excludes .. [[ --column --line-number --no-heading --color=always --smart-case ]]
 		cmd_args = [[fzf --ansi --disabled --bind "start:reload:]]
 			.. rg_prefix
 			.. [[{q}" --bind "change:reload:]]
@@ -151,12 +162,12 @@ function M:entry(job)
 			.. preview_cmd
 			.. [[" ]] .. preview_window .. [[ --nth "3.."]]
   	elseif ya.target_family() == "windows" then
-		cmd_args = [[rg --color=always --line-number --no-heading --smart-case "" | fzf --ansi --preview="]] .. preview_cmd .. [[" --delimiter=":" ]] .. preview_window .. [[ --nth="3.."]]
+		cmd_args = [[rg]] .. rg_excludes .. [[ --color=always --line-number --no-heading --smart-case "" | fzf --ansi --preview="]] .. preview_cmd .. [[" --delimiter=":" ]] .. preview_window .. [[ --nth="3.."]]
 	elseif args[1] == "fzf" then
 		cmd_args = fd_cmd .. [[ | fzf --preview="bat --color=always {}"]]
 	elseif args[1] == "rg" and shell_value == "fish" then
 		cmd_args = [[
-			RG_PREFIX="rg --column --line-number --no-heading --color=always --smart-case " \
+			RG_PREFIX="rg]] .. rg_excludes .. [[ --column --line-number --no-heading --color=always --smart-case " \
 			fzf --ansi --disabled \
 				--bind "start:reload:$RG_PREFIX {q}" \
 				--bind "change:reload:sleep 0.1; $RG_PREFIX {q} || true" \
@@ -167,7 +178,7 @@ function M:entry(job)
 		]]
 	elseif args[1] == "rg" and (shell_value == "bash" or shell_value == "zsh")  then
 		cmd_args = [[
-			RG_PREFIX="rg --column --line-number --no-heading --color=always --smart-case "
+			RG_PREFIX="rg]] .. rg_excludes .. [[ --column --line-number --no-heading --color=always --smart-case "
 			fzf --ansi --disabled \
 				--bind "start:reload:$RG_PREFIX {q}" \
 				--bind "change:reload:sleep 0.1; $RG_PREFIX {q} || true" \
@@ -177,7 +188,7 @@ function M:entry(job)
 				--nth '3..'
 		]]
 	elseif args[1] == "rg" and shell_value == "nu" then
-		local rg_prefix = "rg --column --line-number --no-heading --color=always --smart-case "
+		local rg_prefix = "rg" .. rg_excludes .. " --column --line-number --no-heading --color=always --smart-case "
 		cmd_args = [[fzf --ansi --disabled --bind "start:reload:]]
 			.. rg_prefix
 			.. [[{q}" --bind "change:reload:sleep 100ms; try { ]]
@@ -186,7 +197,7 @@ function M:entry(job)
 			.. preview_cmd
 			.. [[' ]] .. preview_window .. [[ --nth '3..']]
 	else
-		cmd_args = [[rg --color=always --line-number --no-heading --smart-case '' | fzf --ansi --preview=']] .. preview_cmd .. [[' --delimiter=':' ]] .. preview_window .. [[ --nth='3..']]
+		cmd_args = [[rg]] .. rg_excludes .. [[ --color=always --line-number --no-heading --smart-case '' | fzf --ansi --preview=']] .. preview_cmd .. [[' --delimiter=':' ]] .. preview_window .. [[ --nth='3..']]
 	end
 
 	local child, err =
@@ -239,10 +250,20 @@ function M:entry(job)
 		_permit = ui.hide()
 	end
 
+	-- os.execute is blocking libc system() on a tokio worker, and it interpolates
+	-- the path into a shell string — any space, quote or $ mis-parses or injects.
 	if (default_action == "nvim" or get_option() == "nvim" ) and args[1] ~= "fzf" then
-		os.execute("nvim +"..line_number.." -n "..file_url)
+		Command(os.getenv("EDITOR") or "nvim")
+			:arg({ "+" .. line_number, "-n", file_url })
+			:cwd(cwd)
+			:stdin(Command.INHERIT):stdout(Command.INHERIT):stderr(Command.INHERIT)
+			:status()
 	elseif (default_action == "helix" or get_option() == "helix" ) and args[1] ~= "fzf" then
-		os.execute("helix +"..line_number.." "..file_url)
+		Command("helix")
+			:arg({ "+" .. line_number, file_url })
+			:cwd(cwd)
+			:stdin(Command.INHERIT):stdout(Command.INHERIT):stderr(Command.INHERIT)
+			:status()
 	elseif (default_action == "jump" or get_option() == "jump" or args[1] == "fzf") and file_url ~= ""  then
 		ya.emit(file_url:match("[/\\]$") and "cd" or "reveal", { file_url })
 	else
@@ -264,13 +285,13 @@ function M:redraw()
 		ui.Border(ui.Edge.ALL)
 			:area(self._area)
 			:type(ui.Border.ROUNDED)
-			:style(ui.Style():fg("#82ab3a"))
+			:style(ui.Style():fg("green"))
 			:title(ui.Line(self.title):align(ui.Align.CENTER):fg(self.title_color)),
 		ui.Table(rows)
 			:area(self._area:pad(ui.Pad(1, 2, 1, 2)))
-			:header(ui.Row({ "Action for:"..self.file_url }):style(ui.Style():bold():fg("#e73c80")))
+			:header(ui.Row({ "Action for:"..self.file_url }):style(ui.Style():bold():fg("magenta")))
 			:row(self.cursor)
-			:row_style(ui.Style():fg("#82ab3a"):underline()),
+			:row_style(ui.Style():fg("green"):underline()),
 	}
 end
 

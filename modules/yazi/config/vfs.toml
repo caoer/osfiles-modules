@@ -1,0 +1,28 @@
+# SFTP VFS services — nightly [sftp] spelling (#4120), read by the Darwin
+# binary (upstream nightly via the yazi-github flake input). The 26.5.6 fleet
+# binary ignores this section entirely — the old [services] spelling CANNOT sit
+# alongside it: nightly deserializes every top-level section as a VFS scheme,
+# so a [services] block hard-fails its config parse ("missing field kind").
+# Servers regain VFS when the fleet baseline moves past 26.5.6.
+#
+# Browse:  g <Space>  then  sftp://<name>//<remote-path>  (double slash).
+# Auth rides $SSH_AUTH_SOCK by default; add absolute `key_file` per host if
+# the agent doesn't hold its key. Entries mirror lib/ssh/hosts/ (shellkit
+# inventory) — osfiles-managed hosts with stable public endpoints, plus
+# lazybox for CQ-LAN sessions. Names must be kebab-case, 1-20 chars.
+
+[sftp]
+dmit-us-lax = { host = "179.253.232.52", user = "caoer115", port = 22 }
+dmit-us-lax-2 = { host = "179.253.232.77", user = "root", port = 22 }
+hub-lax-1 = { host = "104.128.72.129", user = "caoer115", port = 22 }
+hub-lax-2 = { host = "104.128.72.137", user = "caoer115", port = 22 }
+zt-lax = { host = "104.128.72.136", user = "caoer115", port = 22 }
+rs-lax-1 = { host = "104.238.222.73", user = "root", port = 10622 }
+rs-lax-2 = { host = "104.194.8.246", user = "root", port = 10623 }
+forge-nyc-2 = { host = "185.150.190.38", user = "caoer115", port = 4218 }
+workstation-nyc-2 = { host = "185.150.190.38", user = "caoer115", port = 4213 }
+dev-yul2 = { host = "38.49.209.18", user = "root", port = 3321 }
+vps-100tb-hk = { host = "202.8.104.13", user = "root", port = 22 }
+vps-100tb-sgp = { host = "103.136.124.190", user = "root", port = 22741 }
+gateway-cd = { host = "47.109.42.219", user = "caoer115", port = 22 }
+lazybox = { host = "192.168.80.6", user = "root", port = 22 }

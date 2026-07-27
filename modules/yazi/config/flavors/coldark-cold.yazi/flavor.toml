@@ -1,0 +1,26 @@
+# coldark-cold — the LIGHT half of the [flavor] pair in ../../theme.toml.
+#
+# This flavor exists to carry ONE thing: `tmtheme.xml`, the syntect theme yazi
+# uses for code previews. A flavor's tmTheme is the only per-appearance preview
+# mechanism yazi offers. `[mgr] syntect_theme` cannot do it: it is documented as
+# "not available after using a flavor", and it resolves ABSOLUTE paths only
+# (verified — neither `tmthemes/x.tmTheme` nor `~/.config/yazi/tmthemes/x.tmTheme`
+# loads). An absolute path cannot serve both this repo's macOS checkout and the
+# servers, where home/profiles/server-tools-pro.nix store-copies config/yazi to
+# ~/.config/yazi. Flavors are referenced by NAME and resolved relative to the
+# config dir, so they are portable by construction. Hence a flavor.
+#
+# It is deliberately almost empty. ../../theme.toml sets every UI color as an
+# ANSI role name, and theme.toml overrides whatever a flavor puts here, so
+# duplicating a palette would be dead weight that could silently drift. The UI
+# follows the terminal in both appearances; only the preview needs a file.
+#
+# tmtheme.xml is Coldark-Cold, vendored unmodified from
+# https://github.com/ArmandPhilippot/coldark-bat (MIT, see LICENSE-tmtheme).
+# Chosen because its background (#e3eaf2) is within a hair of Tokyo Night Day's
+# terminal background (#e1e2e7), and because bat ships the same theme — the
+# .txt/.md previewers in ../../yazi.toml point --theme-light at it, so every
+# preview path agrees in light mode.
+
+[mgr]
+# Intentionally empty: theme.toml owns the UI colors.

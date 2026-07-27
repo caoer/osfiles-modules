@@ -1,0 +1,11 @@
+--- a/main.lua
++++ b/main.lua
+@@ -73,6 +73,8 @@
+ 	xlsx = "excel",
+ 	duckdb = "duckdb",
+ 	db = "duckdb",
++	sqlite = "duckdb",
++	sqlite3 = "duckdb",
+ }
+ 
+ local function get_extension(filename)

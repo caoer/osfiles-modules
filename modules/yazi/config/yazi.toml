@@ -13,25 +13,34 @@ scrolloff = 5
 tab_size = 2
 max_width = 1200
 max_height = 1800
+# Long lines in .md/.log previews wrap instead of truncating (trial — set back
+# to "no" if code previews read worse).
+wrap = "yes"
 
+# %s = all selected files in one invocation (the old '"$@"' meaning; the
+# $-family stopped receiving argv on nightly, #4108). Shell-escaped by yazi.
 [opener]
-edit = [{ run = '$EDITOR "$@"', block = true }]
+edit = [{ run = '$EDITOR %s', block = true }]
 # Per-OS: `open` is macOS-only. Linux hosts are headless servers
 # (home/linux/server-files.nix) — no GUI/xdg, so fall back to $EDITOR.
 # A bare `open` on Linux hangs as an unfinished task (no such binary).
 open = [
-  { run = 'open "$@"', for = "macos" },
-  { run = '$EDITOR "$@"', block = true, for = "linux" },
+  { run = 'open %s', for = "macos" },
+  { run = '$EDITOR %s', block = true, for = "linux" },
 ]
-log = [{ run = 'lnav "$@"', block = true }]
+log = [{ run = 'lnav %s', block = true }]
 # macOS-only: headless Linux has no mpv/display — video/audio rules fall
 # through to the next opener instead of erroring.
 play = [
-  { run = 'mpv "$@"', block = true, desc = "Play with mpv", for = "macos" },
+  { run = 'mpv %s', block = true, desc = "Play with mpv", for = "macos" },
 ]
 
+# prepend_rules, not rules: a full `rules = [...]` replacement froze the preset
+# at copy time and silently dropped everything added since — reveal-in-Finder,
+# trash:// browsing, vfs download-on-open, inode/empty. Prepends win where they
+# match; the preset supplies the rest (openers already merge per-key).
 [open]
-rules = [
+prepend_rules = [
   { url = "*.html", use = [
     "open",
   ] },
@@ -118,13 +127,45 @@ rules = [
   { url = "*.toml", use = [
     "edit",
   ] },
-  { url = "*", use = [
-    "open",
-  ] },
+  # No trailing catch-all: as a prepend it would shadow the entire preset
+  # rule list. The preset's own `*` fallback (open + reveal) applies.
 ]
 
 [plugin]
+# .txt and .md used to detour through `piper -- bat`, which pinned a DARK theme
+# into every preview: .txt passed --theme=Coldark-Dark outright, and .md passed
+# no --theme at all, so it inherited --theme=TwoDark from ~/.config/bat/config.
+# Both were unreadable once the terminal followed a light appearance.
+#
+# bat cannot fix this on its own here. `--theme=auto` is documented to pick a
+# variant and honor --theme-light/--theme-dark, but this build (bat 0.26.1)
+# ignores those slots and falls back to its default theme whenever it cannot do
+# a live terminal query — reproduced with stdout piped, inside a pty, and with
+# COLORFGBG set both ways. Only explicit --theme=dark/--theme=light select them,
+# which just moves the appearance decision somewhere else.
+#
+# So the detour is gone. yazi's own previewer handles both, which means they
+# inherit the flavor tmTheme and follow the appearance like every other code
+# file (see theme.toml [flavor]). Nothing is lost: `[preview] wrap = "yes"`
+# above already supplies the wrapping bat was called for, and `bat --style=plain
+# --language=markdown` only ever highlighted markdown SOURCE — the same thing
+# syntect does — rather than rendering it.
+#
+# .log still uses tspin, which owns its own palette and is untouched.
 prepend_previewers = [
+  # Disk images: render the volume tree, and start the read-only attach in the
+  # background while hovering so Enter (smart-enter -> archive-walk) is instant.
+  # macOS-only mechanism; on Linux archive-walk defers to the built-in previewer.
+  { url = "*.dmg", run = "archive-walk" },
+  { url = "*.iso", run = "archive-walk" },
+  { url = "*.sparseimage", run = "archive-walk" },
+  { url = "*.img", run = "archive-walk" },
+  { url = "*.cdr", run = "archive-walk" },
+  # squashfs is the Linux side of the same trade: mounted in O(1) where
+  # osf.fuseUserspace.enable grants a setuid fusermount3, extracted otherwise.
+  { url = "*.squashfs", run = "archive-walk" },
+  { url = "*.sqfs", run = "archive-walk" },
+  { url = "*.sfs", run = "archive-walk" },
   # Media: multi-frame grid for video, waveform/art for audio
   { mime = "video/*", run = "video-montage" },
   { mime = "audio/*", run = "audio-preview" },
@@ -132,12 +173,13 @@ prepend_previewers = [
   { url = "*.csv", run = "duckdb" },
   { url = "*.tsv", run = "duckdb" },
   { url = "*.parquet", run = "duckdb" },
-  { url = "*.txt", run = 'piper -- bat -f -p --theme=Coldark-Dark --wrap=character --terminal-width=$w "$1"' },
+  # .txt and .md are NOT routed through bat — see the note above prepend_previewers.
   { url = "*.xlsx", run = "duckdb" },
   { url = "*.db", run = "duckdb" },
   { url = "*.duckdb", run = "duckdb" },
+  { url = "*.sqlite", run = "duckdb" },
+  { url = "*.sqlite3", run = "duckdb" },
   { mime = "application/x-parquet", run = "duckdb" },
-  { url = "*.md", run = 'piper -- mdcat --columns=$w "$1"' },
   { url = "*.log", run = 'piper -- tspin "$1"' },
   { url = "*.log.*", run = 'piper -- tspin "$1"' },
 ]
@@ -145,12 +187,12 @@ prepend_previewers = [
 prepend_preloaders = [
   # Media: build the montage/waveform ahead of hover so peek displays instantly.
   # peek also generates inline as a fallback, so this is an optimization, not a requirement.
-  { mime = "video/*", run = "video-montage", multi = false },
-  { mime = "audio/*", run = "audio-preview", multi = false },
-  { url = "*.csv", run = "duckdb", multi = false },
-  { url = "*.tsv", run = "duckdb", multi = false },
-  { url = "*.parquet", run = "duckdb", multi = false },
-  { url = "*.xlsx", run = "duckdb", multi = false },
+  { mime = "video/*", run = "video-montage" },
+  { mime = "audio/*", run = "audio-preview" },
+  { url = "*.csv", run = "duckdb" },
+  { url = "*.tsv", run = "duckdb" },
+  { url = "*.parquet", run = "duckdb" },
+  { url = "*.xlsx", run = "duckdb" },
 ]
 
 [[plugin.prepend_fetchers]]
