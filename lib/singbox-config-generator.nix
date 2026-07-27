@@ -116,10 +116,18 @@
   # ── DNS ───────────────────────────────────────────────────────────
   # Split DNS: CN domains → domestic (direct), everything else → foreign (via proxy).
   dnsDetour ? "proxy-select",
+  # DoH, not plain UDP. A UDP DNS transport has no connection object, so a
+  # blackholed flow (upstream rate-limit, NAT mapping evicted under load) is
+  # invisible to sing-box: it keeps sending on the same dead socket forever
+  # and every CN name stops resolving until the unit restarts. Observed live
+  # on cos-stex-gw 2026-07-27 — 52 queries out, 0 replies, while a fresh
+  # socket from the same host answered in 7ms. DoH rides an HTTP/2 connection
+  # that fails and re-dials, so the same event self-heals in one query.
   dnsDomestic ? {
-    type = "udp";
+    type = "https";
     tag = "dns-domestic";
     server = "223.5.5.5";
+    path = "/dns-query";
   },
   dnsForeign ? {
     type = "https";
@@ -162,6 +170,15 @@
   # ── DNS cache ──────────────────────────────────────────────────────
   dnsCacheCapacity ? null,
   dnsReverseMapping ? false,
+
+  # ── DNS query timeout ─────────────────────────────────────────────
+  # sing-box defaults to 10s. When an upstream stops answering, every
+  # retry holds an in-flight slot for that full 10s; a client that retries
+  # hard (tcp-over-redis reconnect, EasyTier STUN discovery) piles up
+  # hundreds of them and starves the :53 inbound for every other LAN
+  # client. 3s bounds the pile-up depth without failing slow-but-live
+  # lookups.
+  dnsTimeout ? "3s",
 
   # ── Cache file path ───────────────────────────────────────────────
   cacheFilePath ? "/var/lib/sing-box-tproxy/cache.db",
@@ -362,6 +379,7 @@ let
       ];
     final = foreignDnsServer.tag;
   }
+  // lib.optionalAttrs (dnsTimeout != null) { timeout = dnsTimeout; }
   // lib.optionalAttrs (dnsCacheCapacity != null) { cache_capacity = dnsCacheCapacity; }
   // lib.optionalAttrs dnsReverseMapping { reverse_mapping = true; };
 

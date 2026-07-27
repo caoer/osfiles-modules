@@ -116,9 +116,10 @@ lib.mkIf (cfg.enable && ecfg.enable && tp.enable) {
 
     dns = {
       domestic = {
-        type = "udp";
+        type = "https";
         tag = "dns-domestic";
         server = wk.dns.alidns;
+        path = "/dns-query";
       };
       foreign = {
         type = "https";

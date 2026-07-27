@@ -265,11 +265,17 @@ in
       domestic = mkOption {
         type = types.attrsOf types.anything;
         default = {
-          type = "udp";
+          type = "https";
           tag = "dns-domestic";
           server = "223.5.5.5";
+          path = "/dns-query";
         };
-        description = "Domestic DNS server (CN domains, direct). Also used for resolv.conf bootstrap.";
+        description = ''
+          Domestic DNS server (CN domains, direct). `server` must stay a bare
+          IP: it doubles as the resolv.conf bootstrap nameserver before
+          sing-box starts, and as the DoH endpoint afterwards (no name to
+          resolve, so no bootstrap dependency).
+        '';
       };
 
       foreign = mkOption {
