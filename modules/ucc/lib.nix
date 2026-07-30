@@ -142,11 +142,17 @@ in
          && "${uccShare}/node/bin/node" --version >/dev/null 2>&1; then
         CC_WANT=$("${localBin}/ccc-statusd" version 2>/dev/null | grep -oP 'Claude Code \K[0-9.]+' || true)
         CC_HAVE=$(grep -oP '"version":\s*"\K[0-9.]+' "${uccShare}/claude-code/package.json" 2>/dev/null || true)
-        if [ -z "$CC_WANT" ] || [ "$CC_HAVE" = "$CC_WANT" ]; then
+        # Native binary is patched per DAEMON release (same CC version, different
+        # patch) — the installer tracks it in a sidecar. Without this check, an
+        # install that dies on the native download (cos-stex-ucc 2026-07-30:
+        # 17 parallel ~260MB streams → SSL EOF) leaves daemon+bundle current and
+        # the gate green, so the stale native binary is never repaired.
+        NATIVE_HAVE=$(cat "${uccShare}/.claude-native-daemon-version" 2>/dev/null || true)
+        if { [ -z "$CC_WANT" ] || [ "$CC_HAVE" = "$CC_WANT" ]; } && [ "$NATIVE_HAVE" = "$DESIRED" ]; then
           echo "ucc: v$DESIRED already installed (claude-code ''${CC_HAVE:-unknown}), skipping"
           exit 0
         fi
-        echo "ucc: daemon v$DESIRED current but claude-code bundle $CC_HAVE != $CC_WANT — reinstalling"
+        echo "ucc: daemon v$DESIRED current but claude-code bundle $CC_HAVE != $CC_WANT or native ''${NATIVE_HAVE:-none} != $DESIRED — reinstalling"
       fi
 
       echo "ucc: updating $CURRENT → $DESIRED"
