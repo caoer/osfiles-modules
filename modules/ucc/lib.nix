@@ -20,7 +20,7 @@ let
         { id = "glm-5-turbo"; label = "GLM 5 Turbo"; }
         { id = "glm-5v-turbo"; label = "GLM 5V Turbo"; }
         { id = "glm-5.1"; label = "GLM 5.1"; }
-        { id = "glm-5.2"; label = "GLM 5.2"; isDefault = true; }
+        { id = "glm-5.2[1m]"; label = "GLM 5.2 (1M)"; isDefault = true; }
       ];
     };
     qwen = {
@@ -81,7 +81,7 @@ let
         { id = "deepseek/deepseek-v4-flash"; label = "DeepSeek: DeepSeek V4 Flash"; }
         { id = "meituan/longcat-2.0"; label = "Meituan: LongCat-2.0"; }
         { id = "minimax/minimax-m3"; label = "MiniMax: MiniMax M3"; }
-        { id = "z-ai/glm-5.2"; label = "Z.AI: GLM 5.2"; }
+        { id = "z-ai/glm-5.2[1m]"; label = "Z.AI: GLM 5.2 (1M)"; }
         { id = "x-ai/grok-4.3"; label = "xAI: Grok 4.3"; }
         { id = "x-ai/grok-4.5"; label = "xAI: Grok 4.5"; }
       ];
