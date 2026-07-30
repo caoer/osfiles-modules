@@ -19,7 +19,7 @@ let
       models = [
         { id = "glm-5-turbo"; label = "GLM 5 Turbo"; }
         { id = "glm-5v-turbo"; label = "GLM 5V Turbo"; }
-        { id = "glm-5.1"; label = "GLM 5.1"; }
+        { id = "glm-5.1[1m]"; label = "GLM 5.1 (1M)"; }
         { id = "glm-5.2[1m]"; label = "GLM 5.2 (1M)"; isDefault = true; }
       ];
     };
@@ -48,42 +48,37 @@ let
     };
     # ZenMux (https://zenmux.ai) — multi-provider router with an
     # Anthropic-compatible endpoint; model ids are vendor-prefixed
-    # (anthropic/claude-opus-4.8, not claude-opus-4.8). Catalog: the ≥500k-context
-    # subset of scripts/fetch-zenmux-models.sh output. No isDefault on purpose:
-    # this one catalog serves every *-zenmux-* profile, and each wrapper already
-    # pins its own family via ANTHROPIC_MODEL — a shared default would override
-    # the pinned model on launch (grok-zenmux-* launching opus).
+    # (anthropic/claude-opus-4.8, not claude-opus-4.8). Catalog: the 1M-context
+    # subset of scripts/fetch-zenmux-models.sh output — every entry carries the
+    # [1m] suffix so the statusline resolves a 1M window instead of the 200k
+    # floor; the launcher strips it before the id reaches the router. Sub-1M
+    # models are deliberately absent rather than listed without the suffix.
+    # No isDefault on purpose: this one catalog serves every *-zenmux-* profile,
+    # and each wrapper already pins its own family via ANTHROPIC_MODEL — a shared
+    # default would override the pinned model on launch (grok-zenmux-* launching
+    # opus).
     zenmux = {
       label = "ZenMux";
       disallowedTools = [ "WebSearch" ];
       models = [
-        { id = "x-ai/grok-4.2-fast"; label = "xAI: Grok 4.2 Fast"; }
-        { id = "openai/gpt-5.5"; label = "OpenAI: GPT-5.5"; }
-        { id = "openai/gpt-5.5-pro"; label = "OpenAI: GPT-5.5 Pro"; }
-        { id = "openai/gpt-5.6-luna"; label = "OpenAI: GPT-5.6 Luna"; }
-        { id = "openai/gpt-5.6-sol"; label = "OpenAI: GPT-5.6 Sol"; }
-        { id = "openai/gpt-5.6-terra"; label = "OpenAI: GPT-5.6 Terra"; }
-        { id = "google/gemini-3.5-flash"; label = "Google: Gemini 3.5 Flash"; }
-        { id = "google/gemini-3.1-pro-preview"; label = "Google: Gemini 3.1 Pro Preview"; }
-        { id = "google/gemini-3.1-flash-lite"; label = "Google: Gemini 3.1 Flash Lite"; }
-        { id = "xiaomi/mimo-v2.5-pro"; label = "Xiaomi: MiMo-V2.5-Pro"; }
-        { id = "openai/gpt-4.1"; label = "OpenAI: GPT-4.1"; }
-        { id = "openai/gpt-4.1-mini"; label = "OpenAI: GPT-4.1 Mini"; }
-        { id = "openai/gpt-4.1-nano"; label = "OpenAI: GPT-4.1 Nano"; }
-        { id = "qwen/qwen3.7-max"; label = "Qwen: Qwen3.7-Max"; }
-        { id = "qwen/qwen3.7-plus"; label = "Qwen: Qwen3.7-Plus"; }
-        { id = "qwen/qwen3.6-flash"; label = "Qwen: Qwen3.6 Flash"; }
-        { id = "qwen/qwen3-coder-plus"; label = "Qwen: Qwen3-Coder-Plus"; }
-        { id = "anthropic/claude-opus-4.8"; label = "Anthropic: Claude Opus 4.8"; }
-        { id = "anthropic/claude-sonnet-5"; label = "Anthropic: Claude Sonnet 5"; }
-        { id = "anthropic/claude-fable-5"; label = "Anthropic: Claude Fable 5"; }
-        { id = "deepseek/deepseek-v4-pro"; label = "DeepSeek: DeepSeek V4 Pro"; }
-        { id = "deepseek/deepseek-v4-flash"; label = "DeepSeek: DeepSeek V4 Flash"; }
-        { id = "meituan/longcat-2.0"; label = "Meituan: LongCat-2.0"; }
-        { id = "minimax/minimax-m3"; label = "MiniMax: MiniMax M3"; }
+        { id = "openai/gpt-5.6-luna[1m]"; label = "OpenAI: GPT-5.6 Luna (1M)"; }
+        { id = "openai/gpt-5.6-sol[1m]"; label = "OpenAI: GPT-5.6 Sol (1M)"; }
+        { id = "openai/gpt-5.6-terra[1m]"; label = "OpenAI: GPT-5.6 Terra (1M)"; }
+        { id = "google/gemini-3.5-flash[1m]"; label = "Google: Gemini 3.5 Flash (1M)"; }
+        { id = "google/gemini-3.1-pro-preview[1m]"; label = "Google: Gemini 3.1 Pro Preview (1M)"; }
+        { id = "google/gemini-3.1-flash-lite[1m]"; label = "Google: Gemini 3.1 Flash Lite (1M)"; }
+        { id = "xiaomi/mimo-v2.5-pro[1m]"; label = "Xiaomi: MiMo-V2.5-Pro (1M)"; }
+        { id = "qwen/qwen3.7-max[1m]"; label = "Qwen: Qwen3.7-Max (1M)"; }
+        { id = "qwen/qwen3.7-plus[1m]"; label = "Qwen: Qwen3.7-Plus (1M)"; }
+        { id = "anthropic/claude-opus-4.8[1m]"; label = "Anthropic: Claude Opus 4.8 (1M)"; }
+        { id = "anthropic/claude-sonnet-5[1m]"; label = "Anthropic: Claude Sonnet 5 (1M)"; }
+        { id = "anthropic/claude-fable-5[1m]"; label = "Anthropic: Claude Fable 5 (1M)"; }
+        { id = "deepseek/deepseek-v4-pro[1m]"; label = "DeepSeek: DeepSeek V4 Pro (1M)"; }
+        { id = "deepseek/deepseek-v4-flash[1m]"; label = "DeepSeek: DeepSeek V4 Flash (1M)"; }
+        { id = "meituan/longcat-2.0[1m]"; label = "Meituan: LongCat-2.0 (1M)"; }
+        { id = "minimax/minimax-m3[1m]"; label = "MiniMax: MiniMax M3 (1M)"; }
         { id = "z-ai/glm-5.2[1m]"; label = "Z.AI: GLM 5.2 (1M)"; }
-        { id = "x-ai/grok-4.3"; label = "xAI: Grok 4.3"; }
-        { id = "x-ai/grok-4.5"; label = "xAI: Grok 4.5"; }
+        { id = "x-ai/grok-4.5[1m]"; label = "xAI: Grok 4.5 (1M)"; }
       ];
     };
   };
