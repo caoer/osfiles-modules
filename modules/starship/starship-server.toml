@@ -27,7 +27,7 @@ $character"""
 
 # Replace the "❯" symbol in the prompt with "➜"
 [character]
-success_symbol = "[❯](bold yellow)"
+success_symbol = "[❯](bold cyan)"
 error_symbol = '[❯](bold red)'
 vimcmd_symbol = '[❮](bold goldenrod)'
 
@@ -54,7 +54,7 @@ format = "[+$added]($added_style)/[-$deleted]($deleted_style) "
 [directory]
 truncation_length = 5
 disabled = false
-style = "bold yellow"
+style = "green"
 
 [git_branch]
 # Disabled in favor of custom.git_branch that respects tmux
@@ -109,20 +109,20 @@ variable = "YAZI_LEVEL"
 format = "[↩ yazi](italic purple) "
 
 [username]
-style_user = "bold green"
+style_user = "purple"
 style_root = "bold red"
 format = "[$user]($style)"
 show_always = true
 
 [hostname]
 ssh_only = false
-format = "[@$hostname](bold cyan) "
+format = "[@$hostname](yellow) "
 trim_at = "."
 aliases = { "mac-m4" = "" }
 
 [fill]
 symbol = "·"
-style = "cyan"
+style = "dimmed"
 
 [cmd_duration]
 min_time = 2_000
