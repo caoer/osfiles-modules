@@ -118,16 +118,28 @@ in
 
     networking.firewall.allowedUDPPortRanges = lib.optional cfg.mosh.enable cfg.mosh.portRange;
 
-    # The daemon is a systemd USER service, not a system service with User=,
-    # and that is load-bearing. On Linux the hook socket lives at
-    # $XDG_RUNTIME_DIR/moshi-hook.sock. Agent hooks are short-lived processes
-    # that Claude spawns inside the user's own login session, where pam_systemd
-    # has set XDG_RUNTIME_DIR=/run/user/<uid>. A system service with User= gets
-    # no XDG_RUNTIME_DIR, so the daemon would open a socket at a path the hooks
-    # never look at, and every approval would silently go nowhere. Running
-    # under the user manager makes both sides agree by construction — it is
-    # also what the vendor's own `moshi-hook service install` does.
+    # The daemon is a systemd USER service, not a system service with User=.
+    # The hook socket lives at $XDG_RUNTIME_DIR/moshi-hook.sock, and the user
+    # manager gives that variable its correct per-user value (/run/user/<uid>)
+    # for free. A system service with User= gets no XDG_RUNTIME_DIR at all, so
+    # the daemon would bind a socket somewhere the hooks never look. Running
+    # under the user manager is also what the vendor's own `service install`
+    # does. linger keeps it up across logout and starts it at boot.
     users.users = lib.mapAttrs (_name: _ucfg: { linger = true; }) cfg.users;
+
+    # Both ends resolve the socket the same way, and NEITHER may depend on the
+    # session having XDG_RUNTIME_DIR. Measured on workstation-nyc-2: `zsh -l`
+    # has it UNSET, so a hook spawned from a login shell falls back to the
+    # vendor's /tmp/moshi-hook.sock default, finds nothing listening, and drops
+    # the approval without an error anyone would see. Pin it explicitly:
+    #   - daemon: %t, which systemd expands to the unit's runtime dir;
+    #   - shells: the live uid, so it is right for every user without needing
+    #     the uid at eval time.
+    # shellInit lands in /etc/set-environment, which /etc/profile and
+    # /etc/zshenv both source. (/etc/profile.d/*.sh is NOT sourced by NixOS.)
+    environment.shellInit = ''
+      export MOSHI_SOCKET_PATH="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/moshi-hook.sock"
+    '';
 
     home-manager.users = lib.mapAttrs (name: ucfg: {
       systemd.user.services.moshi-hook = {
@@ -142,7 +154,13 @@ in
           Restart = "on-failure";
           RestartSec = 5;
           Environment =
-            [ "PATH=${daemonPath}" ]
+            [
+              "PATH=${daemonPath}"
+              # %t = this user unit's runtime dir (/run/user/<uid>). Matches
+              # what the shells below compute, so daemon and hooks agree even
+              # when a session never got XDG_RUNTIME_DIR.
+              "MOSHI_SOCKET_PATH=%t/moshi-hook.sock"
+            ]
             ++ lib.mapAttrsToList (k: v: "${k}=${v}") ucfg.extraEnvironment;
         };
 
