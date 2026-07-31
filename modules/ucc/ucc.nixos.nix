@@ -107,6 +107,45 @@ let
         default = true;
         description = "Install the OpenAI codex CLI (nixpkgs) for this user (paseo's native codex provider drives it).";
       };
+
+      moshi.enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Add Moshi's Claude Code hooks to this user's profiles, so agent
+          activity reaches the Moshi phone app (approvals, task completion,
+          Chat View). Off by default: it points every profile at a daemon that
+          talks to a third-party cloud, which should be a deliberate per-user
+          choice.
+
+          The hook entries are GENERATED HERE rather than by the vendor's
+          `moshi-hook install`, for two independent reasons:
+            1. `install` writes ~/.claude/settings.json. UCC profiles run under
+               CLAUDE_CONFIG_DIR=~/.local/share/ucc/profiles/<name>, so it
+               would not reach a single profile.
+            2. agent-claude-settings-<user> rewrites every profile's
+               settings.json wholesale on each rebuild, so anything `install`
+               wrote would be erased at the next deploy.
+          Generating them keeps nix the single source of truth and covers all
+          profiles at once. Moshi's entries sit ALONGSIDE the ccc-statusd ones
+          — Claude runs every matching hook — so the daemon and the fleet's own
+          hook system coexist.
+
+          Needs the daemon: set osf.moshi.enable and add this user there too,
+          otherwise the hooks fire into a socket nobody is listening on.
+        '';
+      };
+
+      moshi.package = lib.mkOption {
+        type = lib.types.package;
+        default = pkgs.callPackage ../../packages/moshi-hook.nix { };
+        defaultText = lib.literalExpression "osf-modules' pinned packages/moshi-hook.nix";
+        description = ''
+          moshi-hook package whose store path is baked into the hook commands.
+          Keep it the same package osf.moshi.package runs — the hooks and the
+          daemon speak a versioned socket protocol.
+        '';
+      };
     };
   });
 
@@ -131,13 +170,42 @@ let
       }
     ];
 
+  # One Moshi hook entry. This mirrors, field for field, what `moshi-hook
+  # install --target claude` writes — captured by running the vendor installer
+  # against a throwaway HOME and diffing the result. Keep it that way: the
+  # daemon dispatches on the event name and matcher it expects to see.
+  # `async` is Claude's fire-and-forget flag; moshi marks everything async
+  # except PermissionRequest, which must block to carry a decision back.
+  moshiHook =
+    moshiBin:
+    {
+      matcher ? null,
+      async ? true,
+    }:
+    [
+      (
+        {
+          hooks = [
+            {
+              type = "command";
+              command = "'${moshiBin}' claude-hook";
+              inherit async;
+            }
+          ];
+        }
+        // lib.optionalAttrs (matcher != null) { inherit matcher; }
+      )
+    ];
+
   baseClaudeSettings =
-    name:
+    name: ucfg:
     let
       home = homeOf name;
       localBin = "${home}/.local/bin";
       uccData = "${home}/.local/share/ucc";
       hook = statusdHook localBin;
+      # No-op when moshi is off, so every `++ mhook {...}` below collapses away.
+      mhook = if ucfg.moshi.enable then moshiHook (lib.getExe ucfg.moshi.package) else (_: [ ]);
     in
     {
       cleanupPeriodDays = 9999;
@@ -159,13 +227,23 @@ let
       };
       hooks = {
         Notification = hook { };
-        PermissionRequest = hook { matcher = "^(?!AskUserQuestion$)"; };
-        PostToolUse = hook { };
-        PreToolUse = hook { };
-        Stop = hook { timeout = 3600; };
+        # The one event where both systems overlap on purpose. ccc-statusd
+        # excludes AskUserQuestion (it has its own AUQ relay); moshi wants
+        # every permission request, unmatched and synchronous, because that is
+        # how the phone answers a question. Both entries run.
+        PermissionRequest = hook { matcher = "^(?!AskUserQuestion$)"; } ++ mhook { async = false; };
+        PostToolUse = hook { } ++ mhook { matcher = "AskUserQuestion"; } ++ mhook { matcher = "ExitPlanMode"; };
+        PreToolUse = hook { } ++ mhook { matcher = "AskUserQuestion"; } ++ mhook { matcher = "ExitPlanMode"; };
+        Stop = hook { timeout = 3600; } ++ mhook { };
         SubagentStart = hook { };
         SubagentStop = hook { timeout = 3600; };
-        UserPromptSubmit = hook { };
+        UserPromptSubmit = hook { } ++ mhook { };
+      }
+      # Moshi-only events — ccc-statusd binds neither, so these keys appear
+      # only when moshi is enabled rather than shipping empty arrays.
+      // lib.optionalAttrs ucfg.moshi.enable {
+        SessionStart = mhook { };
+        SessionEnd = mhook { };
       };
       statusLine = {
         type = "command";
@@ -237,7 +315,7 @@ let
     let
       home = homeOf name;
       settingsFile = pkgs.writeText "agent-claude-settings-${name}.json" (
-        builtins.toJSON (lib.recursiveUpdate (baseClaudeSettings name) ucfg.claudeSettings)
+        builtins.toJSON (lib.recursiveUpdate (baseClaudeSettings name ucfg) ucfg.claudeSettings)
       );
     in
     pkgs.writeShellScript "agent-claude-settings-${name}" ''

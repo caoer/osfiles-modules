@@ -155,6 +155,9 @@
           paseo = paseoPkg;
           default = paseoPkg;
           kimi-code = pkgs.callPackage ./packages/kimi-code.nix { };
+          # Prebuilt vendor binary, all four systems — exposed so a host can
+          # reference it directly and so CI can push it to the cache.
+          moshi-hook = pkgs.callPackage ./packages/moshi-hook.nix { };
           # The fleet's tmux. Exposed so .woodpecker.yml can build the exact
           # derivation member-base installs and push it to cache.0xtau.com.
           tmux = pkgs.callPackage ./packages/tmux.nix { inherit (inputs) tmux-src; };

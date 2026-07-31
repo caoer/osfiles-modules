@@ -12,5 +12,6 @@
     ./sing-box-client/sing-box-client.nixos.nix
     ./sing-box-gateway/sing-box-gateway.nixos.nix
     ./ucc-singbox/ucc-singbox.nixos.nix
+    ./moshi/moshi.nixos.nix
   ];
 }
