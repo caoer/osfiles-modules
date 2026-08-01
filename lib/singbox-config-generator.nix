@@ -167,6 +167,14 @@
   # ── find_process ──────────────────────────────────────────────────
   find_process ? false,
 
+  # ── auto_detect_interface ─────────────────────────────────────────
+  # sing-box derives ONE default interface (from the v4 default route)
+  # and binds every direct dial to it. On hosts with asymmetric family
+  # defaults (v4 and v6 on different NICs) that ENETUNREACHes the other
+  # family — set false so the kernel routes per family. Loop prevention
+  # under auto_redirect comes from the 0x2024 output mark, not binding.
+  auto_detect_interface ? true,
+
   # ── DNS cache ──────────────────────────────────────────────────────
   dnsCacheCapacity ? null,
   dnsReverseMapping ? false,
@@ -485,7 +493,7 @@ let
   routeBlock = {
     rules = routeRules;
     final = finalOutbound;
-    auto_detect_interface = true;
+    inherit auto_detect_interface;
     default_domain_resolver = dnsDomestic.tag;
     rule_set = [
       {
