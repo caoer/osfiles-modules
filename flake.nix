@@ -48,6 +48,13 @@
       url = "github:caoer/tmux/05a934ebdb590387d4f1454d9d380b77f35cf711";
       flake = false;
     };
+
+    # Pinned nixpkgs for yazi 26.5.6 — same rev osfiles / the fleet run.
+    # modules/yazi/config targets the 26.5.6 schema (group fetchers + git
+    # plugin @since 26.5.6). Consumer nixpkgs often still ships 26.1.22, which
+    # rejects the config (`missing field id in prepend_fetchers`) and refuses
+    # the git plugin. Deliberately NO `follows` — the pin is the point.
+    nixpkgs-yazi.url = "github:NixOS/nixpkgs/9ae611a455b90cf061d8f332b977e387bda8e1ca";
   };
 
   outputs =
@@ -118,7 +125,10 @@
 
       # HM modules: all tool modules (opt-in via osf.<tool>.enable) + presets.
       homeManagerModules = {
-        default = import ./modules/_all-hm.nix { cnixvimFlake = cnixvim; };
+        default = import ./modules/_all-hm.nix {
+          cnixvimFlake = cnixvim;
+          nixpkgsYazi = inputs.nixpkgs-yazi;
+        };
         dev-box = import ./presets/dev-box.nix;
       };
 
