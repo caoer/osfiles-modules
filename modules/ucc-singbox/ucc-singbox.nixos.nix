@@ -129,6 +129,54 @@ let
     echo "${serviceName}: ready — $profiles profile route(s), uid=$target_uid${lib.optionalString isStrict ", strict mode (lan-proxy → ${cfg.lanProxy.server}:${toString cfg.lanProxy.port})"}"
   '';
 
+  # Residual / conflicting TUN state:
+  # - A crash or SIGKILL leaves priority-90xx rules + route table 2022 (auto_route)
+  #   pointing at a dead tun — blackhole risk on next start.
+  # - The pre-Nix installer (~/.local/ucc-sing-box, sudo ./bin/sing-box run -C .)
+  #   claims the same TEST-NET addresses (192.0.2.0/30) and table 2022, so the
+  #   managed unit dies with: "set routes: add route 0: file exists".
+  # Stop legacy installer processes, flush auto_route residue, drop orphan tuns.
+  tunCleanup = pkgs.writeShellScript "${serviceName}-tun-cleanup" ''
+    set +e
+    ip=${pkgs.iproute2}/bin/ip
+
+    for pid in /proc/[0-9]*; do
+      p=''${pid#/proc/}
+      cwd=$(${pkgs.coreutils}/bin/readlink "$pid/cwd" 2>/dev/null || true)
+      case "$cwd" in
+        */.local/ucc-sing-box|*/.local/ucc-sing-box/*)
+          echo "${serviceName}: stopping legacy installer pid=$p cwd=$cwd"
+          ${pkgs.util-linux}/bin/kill "$p" 2>/dev/null
+          ;;
+      esac
+    done
+    ${pkgs.coreutils}/bin/sleep 0.5
+
+    for fam in -4 -6; do
+      $ip $fam rule show 2>/dev/null \
+        | ${pkgs.gawk}/bin/awk -F: '$1 ~ /^90[0-9][0-9]$/ {print $1}' \
+        | while read -r prio; do
+            $ip $fam rule del priority "$prio" 2>/dev/null
+          done
+      $ip $fam route flush table 2022 2>/dev/null
+    done
+
+    for dev in $($ip -o link show 2>/dev/null \
+      | ${pkgs.gawk}/bin/awk -F': ' '{print $2}' \
+      | ${pkgs.gnused}/bin/sed 's/@.*//'); do
+      case "$dev" in
+        tun*)
+          if $ip -4 addr show "$dev" 2>/dev/null \
+            | ${pkgs.gnugrep}/bin/grep -q '192\.0\.2\.'; then
+            echo "${serviceName}: deleting residual $dev (TEST-NET auto_route)"
+            $ip link del "$dev" 2>/dev/null
+          fi
+          ;;
+      esac
+    done
+    exit 0
+  '';
+
 in
 {
   options.osf.uccSingbox = {
@@ -273,8 +321,14 @@ in
       wantedBy = [ "multi-user.target" ];
 
       serviceConfig = {
-        ExecStartPre = fetchScript;
+        # Order: clear residue / kill legacy installer, then fetch API config.
+        ExecStartPre = [
+          "+${tunCleanup}"
+          fetchScript
+        ];
         ExecStart = "${singboxPkg}/bin/sing-box -D /var/lib/${serviceName} run -c ${runtimeConfig}";
+        # Unconditional teardown so crash residue cannot poison the next start.
+        ExecStopPost = "+${tunCleanup}";
         # No CapabilityBoundingSet — process_path_regex routing needs broad
         # /proc access (readlink exe, list fd, netlink INET_DIAG) that fails
         # under restrictive capability sets.
