@@ -1,5 +1,9 @@
 # presets/dev-box.nix — enables common tool set for semi-managed dev boxes.
 # Import AFTER homeManagerModules.default.
+#
+# Note: osf.ucc / osf.paseo here are the HM-side tool enables (PATH, CLI).
+# The NixOS daemon/installer side is modules/agent/agent.nixos.nix
+# (osf.agent.enable) or direct osf.ucc / osf.paseo system options.
 { ... }:
 {
   osf.aliases.enable = true;

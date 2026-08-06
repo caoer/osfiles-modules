@@ -89,7 +89,9 @@ in
   # Fleet-wide central default ccc-statusd version. Both module paths (NixOS +
   # Foreign) default osf.{ucc,uccForeign}.uccVersion to this — ONE bump moves the
   # whole fleet. Override per-host via the option.
-  defaultUccVersion = "1.12.9";
+  # Bump when get-ucc.sui.pics advances — installer must deliver exactly this
+  # version or ucc-update fails ("expected vX got vY").
+  defaultUccVersion = "1.12.11";
 
   # Version-gated UCC installer (nix as updater): compares the installed
   # ccc-statusd version against `version`, runs the Cloudflare installer when it

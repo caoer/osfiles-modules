@@ -9,6 +9,8 @@
     ./media-tools.nix
     ./ucc/ucc.nixos.nix
     (import ./paseo/paseo.nixos.nix { inherit paseoFlake; })
+    # Convenience profile: osf.agent.enable → wires ucc + paseo with defaults.
+    ./agent/agent.nixos.nix
     ./sing-box-client/sing-box-client.nixos.nix
     ./sing-box-gateway/sing-box-gateway.nixos.nix
     ./ucc-singbox/ucc-singbox.nixos.nix
