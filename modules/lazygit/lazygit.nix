@@ -12,6 +12,10 @@ in
       enable = true;
       settings = {
         gui = {
+          # Main-view scroll step for <c-d>/<c-u>, J/K, pgdn/pgup. lazygit's
+          # default of 2 lines reads as "the keybinding does nothing"; 20 gives
+          # a vim-like half-page jump through the diff pane.
+          scrollHeight = 20;
           splitDiff = "always";
           sidePanelWidth = 0.26;
           expandFocusedSidePanel = true;
