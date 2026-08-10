@@ -91,7 +91,7 @@ in
   # whole fleet. Override per-host via the option.
   # Bump when get-ucc.sui.pics advances — installer must deliver exactly this
   # version or ucc-update fails ("expected vX got vY").
-  defaultUccVersion = "1.12.13";
+  defaultUccVersion = "1.12.15";
 
   # Version-gated UCC installer (nix as updater): compares the installed
   # ccc-statusd version against `version`, runs the Cloudflare installer when it
