@@ -144,8 +144,11 @@ in
 
     paseoPackage = lib.mkOption {
       type = lib.types.package;
-      default = paseoFlake.packages.${pkgs.stdenv.hostPlatform.system}.paseo;
-      defaultText = lib.literalExpression "agent-flake's pinned paseo.packages.\${system}.paseo";
+      default = import ../../packages/paseo.nix {
+        inherit (pkgs) lib stdenv;
+        paseo = paseoFlake.packages.${pkgs.stdenv.hostPlatform.system}.paseo;
+      };
+      defaultText = lib.literalExpression "osf-modules packages/paseo.nix wrap of the pinned paseo flake";
       description = ''
         Paseo package for the daemon + CLI. Defaults to the flake's central
         paseo pin. Override per-host (R2) for an outlier that needs a patched

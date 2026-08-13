@@ -93,17 +93,61 @@ let
     # - Root (uid 0): omit include_uid so TUN captures ALL users' traffic
     # - Non-root: add include_uid to scope TUN to that user only
     # - Enable auto_redirect on Linux (always recommended per upstream docs)
-    if [ "$target_uid" = "0" ]; then
-      echo "$raw" | ${pkgs.jq}/bin/jq '
-        (.inbounds // [] | .[] | select(.type == "tun"))
-          |= (.auto_redirect = true)
+    # - Exclude this host's own addresses from auto_route / auto_redirect.
+    #   Connecting to our public IP (or any local iface) is captured, sent
+    #   via `direct` back to the same IP, and captured again — a userspace
+    #   hairpin that pegs CPU (xz-workstation-prod, dest :auto_redirect
+    #   listen port, 2026-08).
+    # - Exclude docker/br-/veth from auto_route so published containers
+    #   don't enter the TUN.
+    # - tun-us: force strict_route=false. API default true blackholes
+    #   return paths on dual-homed / docker web hosts.
+    host_cidrs="$(${pkgs.iproute2}/bin/ip -4 -o addr show \
+      | ${pkgs.gawk}/bin/awk '
+          $2 == "lo" { next }
+          $2 ~ /^tun/ { next }
+          $4 ~ /^127\./ { next }
+          {
+            split($4, a, "/")
+            if (a[1] != "") print a[1] "/32"
+          }
+        ')"
+    docker_ifaces="$(${pkgs.iproute2}/bin/ip -o link show \
+      | ${pkgs.gawk}/bin/awk -F': ' '{print $2}' \
+      | ${pkgs.gnused}/bin/sed 's/@.*//' \
+      | ${pkgs.gnugrep}/bin/grep -E '^(docker[0-9]*|br-|veth)' || true)"
+
+    echo "$raw" | ${pkgs.jq}/bin/jq \
+      --argjson uid "$target_uid" \
+      --arg cidrs "$host_cidrs" \
+      --arg ifaces "$docker_ifaces" \
+      --argjson force_loose ${if isStrict then "false" else "true"} \
+      '
+        ($cidrs | split("\n") | map(select(length > 0))) as $ex_addr
+        | ($ifaces | split("\n") | map(select(length > 0))) as $ex_if
+        | (.inbounds // [] | .[] | select(.type == "tun")) |= (
+            .auto_redirect = true
+            | if $uid == 0 then del(.include_uid) else .include_uid = [$uid] end
+            | if $force_loose then .strict_route = false else . end
+            | .route_exclude_address = (((.route_exclude_address // []) + $ex_addr) | unique)
+            | if ($ex_if | length) > 0
+              then .exclude_interface = (((.exclude_interface // []) + $ex_if) | unique)
+              else . end
+          )
+        | if ($ex_addr | length) > 0 then
+            .route.rules = (
+              [
+                { action: "sniff" },
+                { action: "hijack-dns", protocol: "dns" },
+                { action: "bypass", ip_cidr: $ex_addr }
+              ]
+              + ((.route.rules // []) | map(select(
+                  .action != "sniff" and .action != "hijack-dns"
+                )))
+            )
+          else . end
       ' > ${runtimeConfig}
-    else
-      echo "$raw" | ${pkgs.jq}/bin/jq --argjson uid "$target_uid" '
-        (.inbounds // [] | .[] | select(.type == "tun"))
-          |= (.include_uid = [$uid] | .auto_redirect = true)
-      ' > ${runtimeConfig}
-    fi
+    echo "${serviceName}: tun exclude addrs=$(echo "$host_cidrs" | tr '\n' ' ')"
 
     ${lib.optionalString isStrict ''
       # Post-process step 2 (tun-us-strict): inject LAN proxy outbound + change final route.
