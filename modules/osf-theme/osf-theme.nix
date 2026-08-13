@@ -42,21 +42,21 @@ let
 
       # Follow the variant STATE FILE across prompts: herdr/tmux panes live
       # for days, and a mid-session appearance flip reaches them as a file
-      # update (mac flip push, plain-login re-query, `osf-theme sync`). An
-      # mtime probe per prompt is ~zero cost; env re-exports only on change,
-      # so tools launched from old panes (vi, bat, btop) pick up the current
+      # update (mac flip push, plain-login re-query, `osf-theme sync`). The
+      # probe reads the 5-byte file and compares CONTENT — an mtime probe
+      # missed same-second rewrites (stat %Y is whole seconds). One tiny
+      # read per prompt is ~zero cost; env re-exports only on change, so
+      # tools launched from old panes (vi, bat, btop) pick up the current
       # variant without a new shell.
       _osf_theme_refresh() {
-        local f="''${XDG_STATE_HOME:-$HOME/.local/state}/osf-theme/variant" m v
+        local f="''${XDG_STATE_HOME:-$HOME/.local/state}/osf-theme/variant" v
         [ -r "$f" ] || return 0
-        m=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null) || return 0
-        [ "$m" = "''${_OSF_THEME_MTIME:-}" ] && return 0
-        _OSF_THEME_MTIME="$m"
         v=$(cat "$f" 2>/dev/null)
         case "$v" in
         dark | light) ;;
         *) return 0 ;;
         esac
+        [ "$v" = "''${OSF_APPEARANCE:-}" ] && return 0
         export OSF_APPEARANCE="$v"
         case "$v" in
         light) export BAT_THEME="${cfg.batLight}" ;;
