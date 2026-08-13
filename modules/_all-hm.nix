@@ -16,6 +16,7 @@
     (import ./nixvim/nixvim.nix {
       cnixvimPackages = cnixvimFlake.packages.${pkgs.system};
     })
+    ./osf-theme/osf-theme.nix
     ./starship/starship.nix
     ./tmux/tmux.nix
     (import ./yazi/yazi.nix {
