@@ -18,8 +18,14 @@
   lib,
   stdenv,
   paseo,
+  # fetchNpmDeps hash is nixpkgs-revision-sensitive. Upstream's
+  # nix/npm-deps.hash is for paseo's own nixpkgs pin; consumers that
+  # `follows` a different nixpkgs (osfiles, member nodes) must override.
+  # Bump when `nix build` reports a new `got:` hash.
+  npmDepsHash ? "sha256-oXz8hMk+5DlTYK8OndUAjB+RJMDbPqobVGXLFeoH++o=",
 }:
 let
+  pinned = paseo.override { inherit npmDepsHash; };
   plat =
     if stdenv.hostPlatform.isLinux && stdenv.hostPlatform.isx86_64 then
       "linux-x64"
@@ -32,7 +38,7 @@ let
     else
       throw "paseo: unsupported platform ${stdenv.hostPlatform.system} for node-pty";
 in
-paseo.overrideAttrs (old: {
+pinned.overrideAttrs (old: {
   postInstall = ''
     ${old.postInstall or ""}
     set -eu
