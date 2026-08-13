@@ -47,9 +47,14 @@ colorfgbg_variant() {
 
 # Ask the terminal for its background color (OSC 11) and classify by
 # luminance. Reads /dev/tty raw with a bounded stty timeout — never hangs.
-# Works through SSH; tmux ≥3.3 answers for its client terminal.
+# Works through SSH. NOT trusted inside tmux/herdr panes: the multiplexer
+# answers from its own (often stale) palette, not the real terminal — a
+# wrong answer here would poison the cache. In those panes the state file
+# (maintained by the mac's flip push and by plain-SSH logins) is the truth.
 osc11_variant() {
   local oldstty resp rgb r g b lum
+  [ -n "${TMUX:-}" ] && return 1
+  [ -n "${HERDR_ENV:-}" ] && return 1
   { exec 3<>/dev/tty; } 2>/dev/null || return 1
   oldstty=$(stty -g <&3 2>/dev/null) || {
     exec 3>&-
