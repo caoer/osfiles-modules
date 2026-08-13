@@ -68,7 +68,7 @@ let
 
     dnsDetour = "stls";
 
-    route_exclude_address = [ "223.5.5.5/32" "119.29.29.29/32" "100.100.100.101/32" "10.144.144.1/32" "10.144.144.2/32" ];
+    route_exclude_address = [ "223.5.5.5/32" "119.29.29.29/32" "100.100.100.101/32" "10.56.1.1/32" "10.56.1.2/32" ];
 
     extraRouteRules = [
       { domain_suffix = [ ".coscene.tech" ]; action = "route"; outbound = "coscene-hq"; }

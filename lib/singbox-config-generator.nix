@@ -100,7 +100,8 @@
 
   # ── Direct routing CIDRs (mesh overlays, tailscale, etc.) ─────────
   route_direct_cidrs ? [
-    "10.144.0.0/16"
+    "10.56.0.0/16" # locus-mesh
+    "10.60.0.0/14" # coscene-mesh (covers 10.61 robot/edge)
     "10.42.0.0/16"
     "10.43.0.0/16"
     "100.64.0.0/10"
