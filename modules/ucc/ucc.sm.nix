@@ -3,7 +3,7 @@
 # Self-contained system-manager module for the UCC installer. Extracted from
 # modules/system-manager/agent/{default,ucc}.nix.
 #
-# Version-gated ucc installer as a oneshot system-manager unit. The installer
+# Latest-release ucc installer as a oneshot system-manager unit. The installer
 # SCRIPT is the shared agentLib.mkInstallerScript (identical to the NixOS path);
 # Foreign-specific wiring only: Debian-native deps on PATH (no nix-ld — Debian
 # is a normal glibc distro, the downloaded node/ccc-statusd run natively),
@@ -59,17 +59,6 @@ in
       description = "Absolute home directory of `username` on the target host.";
     };
 
-    uccVersion = lib.mkOption {
-      type = lib.types.str;
-      default = agentLib.defaultUccVersion;
-      defaultText = lib.literalExpression "agent-flake's central defaultUccVersion (modules/ucc/lib.nix)";
-      description = ''
-        Desired ccc-statusd version. Shares the fleet-wide central default with
-        the NixOS module (modules/ucc/lib.nix). Bump → deploy → installer
-        re-runs (nix as updater); same version → skips in <1s.
-      '';
-    };
-
     uccUser = lib.mkOption {
       type = lib.types.str;
       description = "UCC installer user identity (combined with token to form URL).";
@@ -90,7 +79,7 @@ in
 
   config = lib.mkIf cfg.enable {
     systemd.services.ucc-update = {
-      description = "UCC installer (version-gated)";
+      description = "UCC installer (latest release)";
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
       wantedBy = [ "multi-user.target" ];
@@ -109,7 +98,6 @@ in
         ExecStart = agentLib.mkInstallerScript {
           name = cfg.username;
           inherit (cfg) uccUser;
-          version = cfg.uccVersion;
           home = cfg.homeDirectory;
           tokenSecretPath = cfg.installerTokenPath;
           passwordSecretPath = cfg.encryptionPasswordPath;

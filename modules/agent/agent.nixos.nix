@@ -13,7 +13,7 @@
 #   };
 #
 # Fleet upgrades:
-#   defaultUccVersion  — modules/ucc/lib.nix (ONE bump for all consumers)
+#   ucc                — get-ucc.sui.pics latest (no nix pin; restart ucc-update)
 #   paseo pin          — flake.nix inputs.paseo
 #   herdr / grok       — consumer-owned (osfiles home/linux/*); not here
 {
@@ -87,7 +87,6 @@ in
   config = lib.mkIf (cfg.enable && cfg.users != { }) {
     osf.ucc = {
       enable = true;
-      # uccVersion inherits defaultUccVersion from modules/ucc/lib.nix
       users = lib.mapAttrs (
         _name: ucfg:
         {

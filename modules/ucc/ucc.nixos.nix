@@ -2,9 +2,9 @@
 #
 # Self-contained NixOS module for UCC (ccc-statusd + Claude Code profiles).
 # Extracted from modules/nixos/agent/{default,ucc}.nix. Per user:
-#   ucc-update-<user>          version-gated UCC installer (nix as updater:
-#                              bump osf.ucc.uccVersion → rebuild → installer
-#                              runs; same version → skips in <1s)
+#   ucc-update-<user>          UCC installer (always latest from
+#                              get-ucc.sui.pics; the installer skips artifacts
+#                              that already match the published release)
 #   agent-claude-settings-<user>  syncs the nix-defined settings.json (+
 #                              .claude.json patch) into every UCC profile —
 #                              the declarative "claude code profile config"
@@ -303,7 +303,6 @@ let
     agentLib.mkInstallerScript {
       inherit name;
       inherit (ucfg) uccUser;
-      version = cfg.uccVersion;
       home = homeOf name;
       tokenSecretPath = config.sops.secrets.${ucfg.installerTokenSecret}.path;
       passwordSecretPath = config.sops.secrets.${ucfg.encryptionPasswordSecret}.path;
@@ -345,7 +344,7 @@ let
   installerUnits = lib.mapAttrs' (
     name: ucfg:
     lib.nameValuePair "ucc-update-${name}" {
-      description = "UCC installer for ${name} (version-gated)";
+      description = "UCC installer for ${name} (latest release)";
       after = [
         "sops-nix.service"
         "network-online.target"
@@ -413,18 +412,6 @@ in
         out-of-store symlink target resolves under it. Defaults to
         `config.osf.repoRoot` for the osfiles consumer; consumers without
         that option MUST set this.
-      '';
-    };
-
-    uccVersion = lib.mkOption {
-      type = lib.types.str;
-      default = agentLib.defaultUccVersion;
-      defaultText = lib.literalExpression "agent-flake's central defaultUccVersion (modules/ucc/lib.nix)";
-      description = ''
-        Desired ccc-statusd version. The fleet-wide central default lives in
-        modules/ucc/lib.nix (shared with the Foreign module). Bump → rebuild →
-        installer re-runs (nix as updater). Override per-host with
-        osf.ucc.uccVersion.
       '';
     };
 

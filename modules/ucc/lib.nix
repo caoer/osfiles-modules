@@ -1,9 +1,9 @@
 # modules/ucc/lib.nix — shared builders for the agent profile, used by BOTH
 # the NixOS module (modules/ucc) and the Foreign system-manager module
-# (modules/paseo). ONE source of truth for the version-gated ucc
-# installer and the paseo config render; the platform modules differ only in how
-# they wire secrets, PATH, systemd options, and the per-platform agentPath tail
-# around these.
+# (modules/paseo). ONE source of truth for the UCC installer (always the
+# latest get-ucc.sui.pics release) and the paseo config render; the platform
+# modules differ only in how they wire secrets, PATH, systemd options, and
+# the per-platform agentPath tail around these.
 { pkgs }:
 let
   installerBaseUrl = "https://get-ucc.sui.pics/installer";
@@ -86,27 +86,19 @@ in
 {
   inherit modelPresets;
 
-  # Fleet-wide central default ccc-statusd version. Both module paths (NixOS +
-  # Foreign) default osf.{ucc,uccForeign}.uccVersion to this — ONE bump moves the
-  # whole fleet. Override per-host via the option.
-  # Bump when get-ucc.sui.pics advances — installer must deliver exactly this
-  # version or ucc-update fails ("expected vX got vY").
-  defaultUccVersion = "1.12.15";
-
-  # Version-gated UCC installer (nix as updater): compares the installed
-  # ccc-statusd version against `version`, runs the Cloudflare installer when it
-  # differs (or node is broken), verifies, and is a <1s no-op when already
-  # current. CLI tools (curl, bash, coreutils, gnugrep, …) come from the
-  # caller's systemd unit PATH — NixOS via `path`, Foreign via Environment PATH.
+  # UCC installer always pulls the latest release served by get-ucc.sui.pics
+  # (the worker bakes DAEMON_VERSION into the rendered installer). No nix pin
+  # — a new tag is live as soon as CI publishes it. The installer itself
+  # skips daemon/node/bundle/native when they already match that release.
+  # CLI tools (curl, bash, coreutils, gnugrep, …) come from the caller's
+  # systemd unit PATH — NixOS via `path`, Foreign via Environment PATH.
   # Secrets are read from on-host paths the caller wires (sops-nix on NixOS,
   # foreign.secrets on Foreign), so this builder is platform-neutral.
-  # Base URL for the UCC installer — user+token appended per-host.
   installerBaseUrl = "https://get-ucc.sui.pics/installer";
 
   mkInstallerScript =
     {
       name,
-      version,
       home,
       uccUser,
       tokenSecretPath,
@@ -118,7 +110,6 @@ in
     in
     pkgs.writeShellScript "ucc-update-${name}" ''
       set -euo pipefail
-      DESIRED="${version}"
 
       UCC_TOKEN=$(cat ${tokenSecretPath})
       UCC_INSTALLER_URL="${installerBaseUrl}?user=${uccUser}&token=$UCC_TOKEN"
@@ -128,31 +119,8 @@ in
       if [ -x "${localBin}/ccc-statusd" ]; then
         CURRENT=$("${localBin}/ccc-statusd" version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' | head -1 || true)
       fi
+      echo "ucc: installing latest (currently ''${CURRENT:-none})"
 
-      # Full-stack check: ccc-statusd version match AND node binary works AND
-      # the shared claude-code bundle matches the CC version the installed
-      # daemon pairs with. Without the bundle check, an installer run that
-      # dies AFTER the daemon install but BEFORE the bundle download (cos-ucc
-      # 2026-07-27, /tmp full) leaves a state the gate reads as "current" and
-      # never repairs.
-      if [ "$CURRENT" = "$DESIRED" ] && [ -x "${uccShare}/node/bin/node" ] \
-         && "${uccShare}/node/bin/node" --version >/dev/null 2>&1; then
-        CC_WANT=$("${localBin}/ccc-statusd" version 2>/dev/null | grep -oP 'Claude Code \K[0-9.]+' || true)
-        CC_HAVE=$(grep -oP '"version":\s*"\K[0-9.]+' "${uccShare}/claude-code/package.json" 2>/dev/null || true)
-        # Native binary is patched per DAEMON release (same CC version, different
-        # patch) — the installer tracks it in a sidecar. Without this check, an
-        # install that dies on the native download (cos-stex-ucc 2026-07-30:
-        # 17 parallel ~260MB streams → SSL EOF) leaves daemon+bundle current and
-        # the gate green, so the stale native binary is never repaired.
-        NATIVE_HAVE=$(cat "${uccShare}/.claude-native-daemon-version" 2>/dev/null || true)
-        if { [ -z "$CC_WANT" ] || [ "$CC_HAVE" = "$CC_WANT" ]; } && [ "$NATIVE_HAVE" = "$DESIRED" ]; then
-          echo "ucc: v$DESIRED already installed (claude-code ''${CC_HAVE:-unknown}), skipping"
-          exit 0
-        fi
-        echo "ucc: daemon v$DESIRED current but claude-code bundle $CC_HAVE != $CC_WANT or native ''${NATIVE_HAVE:-none} != $DESIRED — reinstalling"
-      fi
-
-      echo "ucc: updating $CURRENT → $DESIRED"
       export ENCRYPTION_PASSWORD
 
       # Disk-backed temp: /tmp is tmpfs on several hosts and routinely full
@@ -171,16 +139,11 @@ in
       curl -fsSL "$UCC_INSTALLER_URL" -o "$TMPSCRIPT"
       bash "$TMPSCRIPT"
 
-      # Verify ccc-statusd.
       if [ ! -x "${localBin}/ccc-statusd" ]; then
         echo "ucc: FATAL: ccc-statusd not found after install" >&2
         exit 1
       fi
       INSTALLED=$("${localBin}/ccc-statusd" version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' | head -1 || true)
-      if [ "$INSTALLED" != "$DESIRED" ]; then
-        echo "ucc: FATAL: expected v$DESIRED but got v$INSTALLED" >&2
-        exit 1
-      fi
 
       # Verify node runs (catches nix-ld / dynamic linking failures).
       if ! "${uccShare}/node/bin/node" --version >/dev/null 2>&1; then
@@ -188,7 +151,7 @@ in
         exit 1
       fi
 
-      echo "ucc: v$DESIRED installed successfully"
+      echo "ucc: v''${INSTALLED:-unknown} installed successfully"
     '';
 
   # paseo config.json rendered into the store from a consumer-supplied JSON with
