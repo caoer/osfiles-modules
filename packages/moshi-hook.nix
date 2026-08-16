@@ -16,28 +16,28 @@
 }:
 
 let
-  version = "0.2.69";
+  version = "0.2.85";
 
   assets = {
     "x86_64-linux" = {
       os = "Linux";
       arch = "x86_64";
-      sha256 = "3903e2e5d1dba02f9e1f53df8cea6e2b3260e1581461b9a07ca65f18814b8b08";
+      sha256 = "5071c6781cb77a158600ab94437af1544e8193208287192dc333c0d57ba4d5b6";
     };
     "aarch64-linux" = {
       os = "Linux";
       arch = "arm64";
-      sha256 = "0a30e081399543551bbd0ba3320f3b28be814a585e5c591e168f8fd6d9565f07";
+      sha256 = "771e288ca939caa43ce7559ad740a9ad2a7474fb755a2df3c7e93616f580860b";
     };
     "x86_64-darwin" = {
       os = "Darwin";
       arch = "x86_64";
-      sha256 = "7cf24d316bafffc59d30e05d6ad6b27d4c03c9953ce901056f57f03c25e4b83b";
+      sha256 = "e9c1b61ea181b874e2993041942c5903c28499dc5fbdf1876b9d1d70304a8ffd";
     };
     "aarch64-darwin" = {
       os = "Darwin";
       arch = "arm64";
-      sha256 = "52258126b675dad210a8f04b83d8e90b359951af37474ff985d2c3f49102d981";
+      sha256 = "b3ba127ee8e57d0a882800e802069711ec4cc7b468b2e3815503617ca42a39a5";
     };
   };
 
