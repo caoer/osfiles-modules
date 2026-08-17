@@ -107,5 +107,15 @@ in
         "herdr/plugins/config/official.browser/browser.json".source =
           src "plugins/official.browser/browser.json";
       };
+
+    # The ccc-herdr painter's row vocabulary — render(v) for every pane label
+    # (the agent view). It resolves $UCC_HOME/config/ccc-herdr.star
+    # (internal/painter/config.go), NOT ~/.config/herdr, so it cannot ride in
+    # xdg.configFile above. A MISSING file is not an error: the painter falls
+    # back to defaults and the agent view silently renders nothing — which is
+    # exactly how it was lost on cos-stex-ucc.
+    home.file = lib.mkIf cfg.manageConfig {
+      ".local/share/ucc/config/ccc-herdr.star".source = src "ccc-herdr.star";
+    };
   };
 }
