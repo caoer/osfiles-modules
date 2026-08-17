@@ -1,6 +1,6 @@
 # packages/paseo.nix — fleet paseo wrapper: keep node-pty's native addon.
 #
-# Upstream 0.3.0 / 0.3.1 `scripts/trace-daemon.mjs` only copies
+# Upstream 0.3.0 through 0.4.0 `scripts/trace-daemon.mjs` only copies
 #   node_modules/node-pty/prebuilds/${platform}-${arch}/**
 # but `@getpaseo/server` depends on node-pty@1.2.0-beta.15, which:
 #   - often ships *no* prebuilds in the official tarball (0.3.0-beta.2 had them)
@@ -22,7 +22,7 @@
   # nix/npm-deps.hash is for paseo's own nixpkgs pin; consumers that
   # `follows` a different nixpkgs (osfiles, member nodes) must override.
   # Bump when `nix build` reports a new `got:` hash.
-  npmDepsHash ? "sha256-oXz8hMk+5DlTYK8OndUAjB+RJMDbPqobVGXLFeoH++o=",
+  npmDepsHash ? "sha256-i5PbVUe2Ec+GtghV9IpCJQJ9hcUT5hFhmxneNvoD584=",
 }:
 let
   pinned = paseo.override { inherit npmDepsHash; };

@@ -31,11 +31,13 @@
 
     # THE central paseo pin for the whole fleet. Transferred from agent-flake.
     # One bump here reaches every consumer that imports this flake.
-    # Pin a release tag — floating `main` shipped 0.3.0 without node-pty
-    # prebuilds (terminal worker crash). Wrapper in packages/paseo.nix
-    # asserts/injects pty.node so a future tracer regression fails the build.
+    # Pin a stable release tag (upstream also tags -beta.N — skip those) —
+    # floating `main` shipped 0.3.0 without node-pty prebuilds (terminal
+    # worker crash). Wrapper in packages/paseo.nix asserts/injects pty.node
+    # so a future tracer regression fails the build; bump its npmDepsHash
+    # alongside this url on every version bump.
     paseo = {
-      url = "github:getpaseo/paseo/v0.3.1";
+      url = "github:getpaseo/paseo/v0.4.0";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
