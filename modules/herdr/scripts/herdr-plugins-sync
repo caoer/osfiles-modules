@@ -1,0 +1,73 @@
+#!/bin/sh
+# Install the pinned herdr plugin set on this host.
+#
+# herdr owns its plugin registry (~/.config/herdr/plugins.json) and builds each
+# plugin on the host, so plugins are NOT nix-managed — this script drives
+# herdr's own installer with pinned commits instead. Idempotent: a plugin that
+# is already installed is left alone, whatever its source, so the mac's local
+# dev links (`herdr plugin link`) survive a run.
+#
+# Usage: herdr-plugins-sync [--check]
+#   --check   report only, install nothing (exit 1 if anything is missing)
+#
+# Bumping a pin: install the new ref by hand, confirm it works, then edit the
+# PLUGINS table below (osfiles: bin/herdr-plugins-sync) and commit.
+# Plugin *settings* are not managed here — they ride in config/herdr/plugins/
+# and land as ~/.config/herdr/plugins/config/<id>/ through home-manager.
+set -eu
+
+# id|owner/repo|commit
+PLUGINS="ccc-herdr|caoer/ccc-herdr|69799e4f93f8289831d2bb95d7813ecfb35529c2
+ccc-layout|caoer/ccc-herdr-layout|4637d113b3e1003b08242c02e1bd50f0fc58428e
+jhochenbaum.hunkdiff|jhochenbaum/herdr-hunk-diff|6810ab31b34ec28eb302603846bc4339e7063655
+official.browser|ogulcancelik/herdr-browser|be6888b71cf4eb5939ee79a746bd1a1c22ade046"
+
+check_only=0
+case "${1:-}" in
+--check) check_only=1 ;;
+"") ;;
+*)
+  echo "usage: herdr-plugins-sync [--check]" >&2
+  exit 2
+  ;;
+esac
+
+command -v herdr >/dev/null 2>&1 || {
+  echo "herdr-plugins-sync: no herdr on PATH" >&2
+  exit 1
+}
+
+installed=$(herdr plugin list 2>/dev/null || true)
+
+echo "$PLUGINS" | while IFS='|' read -r id repo ref; do
+  [ -n "$id" ] || continue
+  if printf '%s\n' "$installed" | grep -q -- "- $id "; then
+    printf '%s\n' "$installed" | sed -n "s/^- $id \(.*\)$/  = $id \1/p"
+    continue
+  fi
+  if [ "$check_only" = 1 ]; then
+    echo "  ! $id missing (pin $repo@$(echo "$ref" | cut -c1-8))"
+    continue
+  fi
+  echo "  + installing $id from $repo@$(echo "$ref" | cut -c1-8)"
+  # Builds on the host (go / bun / npm per plugin manifest) and needs network.
+  herdr plugin install "$repo" --ref "$ref" -y || echo "  x $id FAILED" >&2
+done
+
+# The while loop runs in a subshell (pipe), so re-derive the verdict here.
+after=$(herdr plugin list 2>/dev/null || true)
+rc=0
+echo "$PLUGINS" | cut -d'|' -f1 | while read -r id; do
+  [ -n "$id" ] || continue
+  printf '%s\n' "$after" | grep -q -- "- $id " || {
+    echo "herdr-plugins-sync: $id not installed" >&2
+    exit 1
+  }
+done || rc=1
+
+if [ "$rc" = 0 ]; then
+  echo "herdr-plugins-sync: all pinned plugins present"
+else
+  echo "herdr-plugins-sync: some plugins missing (see above)" >&2
+fi
+exit "$rc"

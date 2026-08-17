@@ -1,0 +1,108 @@
+#!/bin/sh
+# Manually re-trigger herdr's host-color harvest.
+#
+# WezTerm cannot emit mode-2031 color-scheme reports (wezterm/wezterm#6454),
+# so herdr re-learns host colors only when a ghostty-style scheme report
+# (CSI ? 997 ; 1|2 n) reaches a herdr client's stdin. The wezterm appearance
+# hook (config/wezterm/common.lua poke_herdr) types one on every macOS
+# appearance flip; this is the same poke as an on-demand command, for when
+# the hook missed (wezterm restarted, flip landed while no GUI was up).
+# Bound in herdr as [[keys.command]] prefix+shift+c; also fine from a shell.
+#
+# Usage: herdr-poke-scheme [dark|light]   (default: current macOS appearance)
+set -u
+
+case "${1:-}" in
+dark) variant=1 ;;
+light) variant=2 ;;
+"")
+  if [ "$(defaults read -g AppleInterfaceStyle 2>/dev/null)" = Dark ]; then
+    variant=1
+  else
+    variant=2
+  fi
+  ;;
+*)
+  echo "usage: herdr-poke-scheme [dark|light]" >&2
+  exit 2
+  ;;
+esac
+
+# Toast through herdr so the key binding has visible feedback (custom
+# commands run detached — stdout goes nowhere a user looks).
+toast() {
+  command -v herdr >/dev/null 2>&1 && herdr notification show "color harvest" --body "$1" >/dev/null 2>&1
+  return 0
+}
+
+wezterm=$(command -v wezterm || true)
+[ -n "$wezterm" ] || wezterm=/Applications/WezTerm.app/Contents/MacOS/wezterm
+if [ ! -x "$wezterm" ]; then
+  echo "herdr-poke-scheme: no wezterm here — the poke must run on the client (mac) side" >&2
+  toast "no wezterm on this host — poke must run on the mac side"
+  exit 1
+fi
+
+py=$(command -v python3 || true)
+[ -n "$py" ] || py=/usr/bin/python3
+
+# The report must be typed INTO the wezterm pane running a herdr client, so
+# it arrives on the client's stdin. Herdr custom commands run detached with
+# an unknown environment, so discover live GUI sockets instead of trusting
+# WEZTERM_UNIX_SOCKET; a crashed GUI leaves its socket file behind, hence
+# the pid liveness check. GUI sockets list panes of every attached domain,
+# so the headless mux socket needs no separate pass.
+report=$(printf '\033[?997;%sn' "$variant")
+
+# Herdr client panes are matched by tty first, title second. Title-only
+# matching breaks when an earlier pane app cleared the title with an empty
+# OSC 0/2 (claude does on exit): wezterm's process-name title fallback only
+# applies to default-titled panes, so the herdr pane stays invisible forever.
+# The client always has a tty; the server (and detached CLI calls) do not.
+herdr_ttys=$(ps -axo tty=,comm= | awk '$2 ~ /(^|\/)herdr$/ && $1 != "??" {print "/dev/" $1}')
+
+poked=0
+for sock in "$HOME/.local/share/wezterm"/gui-sock-*; do
+  [ -S "$sock" ] || continue
+  kill -0 "${sock##*gui-sock-}" 2>/dev/null || continue
+  for pane in $(WEZTERM_UNIX_SOCKET=$sock "$wezterm" cli list --format json 2>/dev/null |
+    HERDR_TTYS="$herdr_ttys" "$py" -c 'import json,os,sys
+ttys = set(os.environ.get("HERDR_TTYS", "").split())
+for p in json.load(sys.stdin):
+    if p.get("tty_name") in ttys or "herdr" in p.get("title", ""):
+        print(p["pane_id"])'); do
+    if WEZTERM_UNIX_SOCKET=$sock "$wezterm" cli send-text --no-paste --pane-id "$pane" "$report"; then
+      poked=$((poked + 1))
+    fi
+  done
+done
+
+# Forward the report into panes running Claude Code. The client poke above
+# fixes what herdr ANSWERS (OSC 11 at app launch); already-running claudes
+# only flip live if the report reaches their own stdin. Claude Code enables
+# mode 2031 and parses the report as a complete unit (^\x1b\[\?997;([12])n$
+# in its input parser), so it never leaks into the composer. Other pane
+# occupants (shells, grok, bat) have no verified parser — claude only.
+forwarded=0
+if command -v herdr >/dev/null 2>&1; then
+  sleep 0.3 # let the re-harvest land before claudes re-query OSC 11
+  for pane in $(herdr agent list 2>/dev/null | "$py" -c 'import json,sys
+try:
+    for a in json.load(sys.stdin)["result"]["agents"]:
+        if a.get("agent") == "claude":
+            print(a["pane_id"])
+except Exception:
+    pass'); do
+    if herdr pane send-text "$pane" "$report" >/dev/null 2>&1; then
+      forwarded=$((forwarded + 1))
+    fi
+  done
+fi
+
+[ "$variant" = 1 ] && name=dark || name=light
+echo "herdr-poke-scheme: poked $poked herdr client(s), forwarded to $forwarded claude pane(s) ($name)"
+if [ "$poked" = 0 ]; then
+  toast "no herdr client found in wezterm — nothing poked"
+else
+  toast "re-harvested $name colors ($poked client(s), $forwarded claudes poked)"
+fi

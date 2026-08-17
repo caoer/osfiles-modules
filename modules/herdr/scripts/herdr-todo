@@ -1,0 +1,12 @@
+#!/bin/sh
+# Open the ucc todo note. Bound in herdr as [[keys.command]] prefix+t (popup).
+#
+# Exists so config/herdr/config.toml carries no home-specific path: the same
+# file ships to the mac (/Users/caoer115) and to Linux agent boxes
+# (/home/caoer115). herdr 0.8.0 hands custom commands the full login PATH for
+# both `type = "shell"` and `type = "popup"` (measured: /etc/profiles/per-user,
+# ~/.nix-profile/bin and /run/current-system/sw/bin are all present), so a bare
+# name on PATH resolves on every host.
+set -eu
+
+exec nvim "${UCC_HOME:-$HOME/.local/share/ucc}/todo.md"

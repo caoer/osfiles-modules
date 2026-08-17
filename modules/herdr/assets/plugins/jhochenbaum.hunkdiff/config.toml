@@ -1,0 +1,20 @@
+# hunkdiff plugin config. Every setting is optional; unset falls back to the default.
+# Full reference: ~/.config/herdr/plugins/github/jhochenbaum.hunkdiff-*/README.md
+
+[review]
+# Never open a review pane on its own — with a fleet of agents going idle that
+# would spawn panes constantly. Reviews open only on prefix+shift+h / a / m.
+auto_open = false
+# Still keep the agent<->worktree association so send-review knows where to deliver.
+on_states = ["idle"]
+reuse_pane = true
+default_target = "auto" # branch diff when ahead of base, else working tree
+watch = true            # refresh the open review as the agent keeps editing
+placement = "split"     # overlay | split | tab | zoomed
+exclude_untracked = false
+
+[roundtrip]
+clear_after_send = true
+
+[hunk]
+bin = "auto" # bundled hunkdiff; absolute path to use a global install instead

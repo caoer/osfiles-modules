@@ -41,6 +41,16 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # THE central herdr pin for the whole fleet (agent terminal multiplexer),
+    # paired with modules/herdr — one binary AND one config.toml everywhere.
+    # Owner is herdrdev; ogulcancelik/herdr is the old name and still 301s to
+    # it (both resolve v0.8.0 to 857196de). No upstream binary cache (docs say
+    # build from source), so following our nixpkgs is free.
+    herdr = {
+      url = "github:herdrdev/herdr/v0.8.0";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # NixVim (cnixvim) — thin wrapper over caoer/nixvim (khanelivim fork).
     # Do NOT follow nixpkgs — cnixvim lets khanelivim use its own nixpkgs.
     cnixvim.url = "github:caoer/cnixvim";
@@ -133,6 +143,7 @@
         default = import ./modules/_all-hm.nix {
           cnixvimFlake = cnixvim;
           nixpkgsYazi = inputs.nixpkgs-yazi;
+          herdrFlake = inputs.herdr;
         };
         dev-box = import ./presets/dev-box.nix;
       };

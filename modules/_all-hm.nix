@@ -1,6 +1,10 @@
 # modules/_all-hm.nix — single HM import for consumers.
 # Enables nothing by default — consumers toggle osf.<tool>.enable.
-{ cnixvimFlake, nixpkgsYazi }:
+{
+  cnixvimFlake,
+  nixpkgsYazi,
+  herdrFlake,
+}:
 { config, lib, pkgs, ... }:
 {
   imports = [
@@ -12,6 +16,9 @@
     ./eza/eza.nix
     ./git/git.nix
     ./glow/glow.nix
+    (import ./herdr/herdr.nix {
+      herdrPackages = herdrFlake.packages.${pkgs.system};
+    })
     ./lazygit/lazygit.nix
     (import ./nixvim/nixvim.nix {
       cnixvimPackages = cnixvimFlake.packages.${pkgs.system};
