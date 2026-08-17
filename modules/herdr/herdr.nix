@@ -133,7 +133,14 @@ in
 # Still owned by the ccc-herdr plugin, NOT by nix: painter lifecycle. Placing
 # ccc-herdr.star (home.file above) fixes the row vocabulary, but a fresh host
 # still needs a RUNNING `ccc-herdr painter run` and nothing here starts one, so
-# the agent view stays dark until the painter is up. The painter also reads its
-# config only at START — after a rebuild that changes the star, restart it
-# (`ccc-herdr painter restart`) or the old vocabulary keeps rendering.
+# the agent view stays dark until the painter is up.
+#
+# A rebuild that changes the star needs NO restart — the painter watches the
+# file (fsnotify) and reloads on save, as its own ccc-herdr.star header says.
+# Verified on cos-stex-ucc 2026-08-17: the moment home-manager placed the star,
+# painter.log logged "config path now …/ccc-herdr.star" + "config changed —
+# reloading" under the SAME pid (2077310, started an hour earlier), and
+# `ccc-herdr check` went from built-in defaults to naming the star.
+# Do NOT prescribe `ccc-herdr painter restart` here: bouncing the painter next
+# to live panes is real risk for zero benefit.
 
