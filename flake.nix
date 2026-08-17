@@ -64,6 +64,23 @@
       flake = false;
     };
 
+    # THE central hunk pin for the whole fleet — review-first terminal diff
+    # viewer for agent-authored changesets (`hunk diff A B`, `hunk show`,
+    # `hunk patch`; also usable as git pager/difftool). Same tag osfiles pins
+    # in its own flake.nix, so mac and member hosts run one version.
+    #
+    # Our nixpkgs (d407951) has NO `hunk` attribute at all — nix answers the
+    # eval with "did you mean chunk, honk, hunt" — so the upstream flake is
+    # the only source without a nixpkgs bump.
+    #
+    # Deliberately NO `inputs.nixpkgs.follows`: upstream pins its own nixpkgs
+    # plus a `systems` triplet for bun2nix, and overriding it breaks their
+    # eval guards. That triplet is why the re-export below is guarded —
+    # upstream builds aarch64-darwin/aarch64-linux/x86_64-linux and NOT
+    # x86_64-darwin, which IS in this flake's `systems`. Unguarded, every
+    # `nix flake show`/`check` would fail on that system.
+    hunk.url = "github:modem-dev/hunk/v0.18.2";
+
     # Pinned nixpkgs for yazi 26.5.6 — same rev osfiles / the fleet run.
     # modules/yazi/config targets the 26.5.6 schema (group fetchers + git
     # plugin @since 26.5.6). Consumer nixpkgs often still ships 26.1.22, which
@@ -189,6 +206,13 @@
           # The fleet's tmux. Exposed so .woodpecker.yml can build the exact
           # derivation member-base installs and push it to cache.0xtau.com.
           tmux = pkgs.callPackage ./packages/tmux.nix { inherit (inputs) tmux-src; };
+        }
+        // nixpkgs.lib.optionalAttrs (inputs.hunk.packages ? ${system}) {
+          # hunk — central fleet pin, re-exported straight from upstream (no
+          # wrapper). Consumers put it in home.packages the way they do paseo:
+          #   inputs.osf-modules.packages.${pkgs.stdenv.hostPlatform.system}.hunk
+          # Guard is upstream's system set, not ours — see the input comment.
+          hunk = inputs.hunk.packages.${system}.default;
         }
         // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
           codex = pkgs.callPackage ./packages/codex.nix { };
