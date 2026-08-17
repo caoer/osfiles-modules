@@ -69,8 +69,16 @@ onboarding = false
 # tokyo-night's defaults sit too close to panel_bg — the agent-view selected
 # row was invisible. #33467c is tokyo-night's selection blue, #3b4261 its
 # fg_gutter: both clearly elevated on the #1a1b26 panel.
+# Auto light/dark. With auto_switch = true herdr reads dark_name/light_name
+# and IGNORES `name` (src/app/mod.rs resolve_effective_theme: `name` is the
+# manual-mode value only). Appearance comes from an OSC query to the host
+# terminal; when it cannot be determined herdr falls back to Dark, so
+# dark_name is the safe default and light only wins on a positive answer.
+# `name` is kept as the manual-mode value in case auto_switch is turned off.
 name = "catppuccin-latte"
-auto_switch = false
+auto_switch = true
+dark_name = "tokyo-night"
+light_name = "catppuccin-latte"
 [theme.custom]
 # surface_dim paints the agent-view selected row. Base themes map it too
 # close to panel_bg, which made the selection invisible. #4d4467 is the
