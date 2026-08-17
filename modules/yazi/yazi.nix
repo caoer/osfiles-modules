@@ -5,7 +5,15 @@
 # fetchers, git plugin @since 26.5.6); shipping pkgs.yazi from a lagging
 # consumer nixpkgs breaks rr with `missing field id in prepend_fetchers`
 # and `Plugin git requires at least Yazi 26.5.6`.
-{ yaziPackage }:
+#
+# hunkPackage is the `g d` differ (keymap.toml). Injected the same way, and
+# nullable: upstream hunk builds aarch64-darwin/aarch64-linux/x86_64-linux
+# only, so on x86_64-darwin _all-hm.nix passes null and the binding simply has
+# no binary — rather than failing eval for the whole module set.
+{
+  yaziPackage,
+  hunkPackage ? null,
+}:
 { config, lib, pkgs, ... }:
 let
   cfg = config.osf.yazi;
@@ -28,7 +36,12 @@ in
       pkgs.duckdb
       pkgs.tailspin
       pkgs.mdcat
-    ];
+    ]
+    # The `g d` differ. Ships WITH the keymap that calls it — the previous
+    # binding shelled out to `delta`, which no osf module has ever installed,
+    # so `g d` was a broken key for every consumer that did not happen to
+    # bring its own. Binary and binding land together or not at all.
+    ++ lib.optional (hunkPackage != null) hunkPackage;
 
     programs.zsh.initContent = lib.mkAfter ''
       function yy() {

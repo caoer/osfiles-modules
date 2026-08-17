@@ -161,6 +161,7 @@
           cnixvimFlake = cnixvim;
           nixpkgsYazi = inputs.nixpkgs-yazi;
           herdrFlake = inputs.herdr;
+          hunkFlake = inputs.hunk;
         };
         dev-box = import ./presets/dev-box.nix;
       };

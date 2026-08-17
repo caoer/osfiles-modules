@@ -4,6 +4,7 @@
   cnixvimFlake,
   nixpkgsYazi,
   herdrFlake,
+  hunkFlake,
 }:
 { config, lib, pkgs, ... }:
 {
@@ -35,6 +36,10 @@
           config = { };
           overlays = [ ];
         }).yazi;
+      # The `g d` differ, from the central fleet pin. null where upstream has
+      # no build (x86_64-darwin): the module drops it instead of failing eval.
+      hunkPackage =
+        hunkFlake.packages.${pkgs.stdenv.hostPlatform.system}.default or null;
     })
     ./zoxide/zoxide.nix
     ./zsh/zsh.nix

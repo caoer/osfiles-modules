@@ -257,10 +257,16 @@ desc = "Pack selected folders into DMGs here"
 # `set -- %s` re-establishes the selected files as shell positionals: %s splats
 # the shell-escaped paths, so $#/$1/$2 work again (the old implicit argv is
 # gone). `shell --block -- <raw>` avoids double-escaping the quotes.
+# The `$# -eq 2` guard is load-bearing: given any count other than two,
+# `hunk diff` stops treating the args as file paths and resolves them as Git
+# revisions ("could not resolve Git revision or range").
+# Same `g d` contract as osfiles' yazi-basic and cyazi keymaps — one differ
+# across the fleet. hunk lands with this module (osf.yazi ships it), so the
+# binding and the binary cannot drift apart.
 [[mgr.prepend_keymap]]
 on = ["g", "d"]
-run = 'shell --block -- set -- %s; if [ $# -eq 2 ]; then diff -u "$1" "$2" | delta --paging=always; else echo Select exactly 2 files; read; fi'
-desc = "Diff two selected files (delta)"
+run = 'shell --block -- set -- %s; if [ $# -eq 2 ]; then hunk diff "$1" "$2"; else echo Select exactly 2 files; read; fi'
+desc = "Diff two selected files (hunk)"
 
 [[mgr.prepend_keymap]]
 on = ["g", "D"]
