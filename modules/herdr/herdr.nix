@@ -58,9 +58,23 @@ in
       type = lib.types.bool;
       default = true;
       description = ''
-        Place config.toml and plugin settings as read-only store symlinks.
-        Set false on hosts that own the config out-of-store (the mac), where
-        in-app settings writes must land in a git checkout.
+        Place config.toml and plugin settings at all. Set false on hosts that
+        own those paths themselves (the mac, via osfiles home/darwin/files.nix).
+      '';
+    };
+
+    configSource = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "/opt/nix-foreign/config/herdr";
+      description = ''
+        Directory holding config.toml and plugins/<id>/… on the host. A STRING
+        path becomes an out-of-store symlink, so edits to those files apply
+        live — `herdr server reload-config` and they are in effect, no rebuild
+        and no 3-repo flake-bump chain. Same trick as codexConfigSource.
+
+        Null (default) takes the read-only store copy shipped in assets/:
+        reproducible, but in-app settings writes cannot persist.
       '';
     };
   };
@@ -73,13 +87,25 @@ in
       herdrScripts
     ];
 
-    xdg.configFile = lib.mkIf cfg.manageConfig {
-      "herdr/config.toml".source = ./assets/config.toml;
+    xdg.configFile =
+      let
+        # Nix path -> immutable store copy. String path -> out-of-store
+        # symlink, edits live. Same source list either way, so a host can flip
+        # between reproducible and hackable without the file set drifting.
+        src =
+          rel:
+          if cfg.configSource == null then
+            ./assets + "/${rel}"
+          else
+            config.lib.file.mkOutOfStoreSymlink "${cfg.configSource}/${rel}";
+      in
+      lib.mkIf cfg.manageConfig {
+        "herdr/config.toml".source = src "config.toml";
 
-      "herdr/plugins/config/jhochenbaum.hunkdiff/config.toml".source =
-        ./assets/plugins/jhochenbaum.hunkdiff/config.toml;
-      "herdr/plugins/config/official.browser/browser.json".source =
-        ./assets/plugins/official.browser/browser.json;
-    };
+        "herdr/plugins/config/jhochenbaum.hunkdiff/config.toml".source =
+          src "plugins/jhochenbaum.hunkdiff/config.toml";
+        "herdr/plugins/config/official.browser/browser.json".source =
+          src "plugins/official.browser/browser.json";
+      };
   };
 }
