@@ -63,6 +63,39 @@ let
     done
     echo "claude settings: applied to $count profile(s)"
   '';
+
+  # Re-assert herdr's OWN SessionStart reporter after the settings deploy.
+  #
+  # `ucc-cli herdr setup` installs two things per profile: hooks/herdr-agent-state.sh
+  # (the reporter script) and a SessionStart entry in that profile's settings.json.
+  # applyClaudeSettings above `cp`s one flat settings.json over every profile, which
+  # DELETES that entry — measured on cos-stex-ucc before this step existed: 23/23
+  # profiles still had the script, 0/23 still had the hook, so the panes went unlabelled.
+  #
+  # It cannot be nix-declared into claudeSettings: the hook command embeds each
+  # profile's OWN absolute path (bash <home>/.local/share/ucc/profiles/<p>/hooks/
+  # herdr-agent-state.sh session) — 23 different values on that host, and the profiles
+  # only exist after the ucc installer has run. So re-run the installer's own idempotent
+  # command instead of re-implementing it.
+  #
+  # PATH is load-bearing, not politeness: herdr-setup.mjs finds the binary via four
+  # hardcoded candidates (/run/current-system/sw/bin, ~/.local/bin, /opt/homebrew/bin,
+  # /usr/local/bin) plus $PATH. On a foreign/HM-standalone host herdr comes from
+  # home.packages and lands in profileDirectory, which is on NONE of those — and HM
+  # activation inherits the invoking shell's PATH (`nix run … home-manager -- switch`
+  # need not carry it). Without this prepend the step silently no-ops on exactly the
+  # hosts that need it.
+  #
+  # --if-installed exits 0 where herdr is absent; this module runs on hosts without it.
+  herdrHookSetup = pkgs.writeShellScript "ucc-herdr-hook-setup" ''
+    set -euo pipefail
+    cli="${home}/.local/share/ucc/bin/ucc-cli"
+    [ -x "$cli" ] || { echo "ucc-cli absent — skipping herdr hook setup"; exit 0; }
+    export PATH="${config.home.profileDirectory}/bin:$PATH"
+    # Never fatal: herdr is optional and a multiplexer hook must not brick a rebuild
+    # (herdr-setup.mjs makes the same promise internally). Loud on the way out.
+    "$cli" herdr setup --if-installed || echo "herdr hook setup FAILED (non-fatal) — panes will render unlabelled"
+  '';
 in
 {
   options.osf.ucc = {
@@ -170,6 +203,17 @@ in
       activation = lib.optionalAttrs (cfg.claudeSettings != null) {
         deployClaudeSettings = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
           $DRY_RUN_CMD ${applyClaudeSettings}
+        '';
+      }
+      // {
+        # Runs on every osf.ucc host, not just the ones deploying settings: it also
+        # covers a fresh box where the installer ran before herdr existed. The dep on
+        # deployClaudeSettings is conditional because that entry only exists when
+        # claudeSettings != null — naming an absent dag entry is an eval error.
+        uccHerdrHook = lib.hm.dag.entryAfter (
+          [ "writeBoundary" ] ++ lib.optional (cfg.claudeSettings != null) "deployClaudeSettings"
+        ) ''
+          $DRY_RUN_CMD ${herdrHookSetup}
         '';
       };
     };
