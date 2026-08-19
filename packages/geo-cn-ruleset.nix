@@ -27,7 +27,7 @@ let
   raw = fetchurl {
     name = "geo-cn-raw.json";
     url = "https://rules.sui.pics/singbox/rule-sets/cn.json";
-    hash = "sha256-7SBdx1kHxLfv/8tkCoGTPzCpmP972E3wpG61o4tL+SA=";
+    hash = "sha256-OWQjGuJVTpMfqkG7YOAGow95rNvXbTNpV81E1uDiAzU=";
   };
 in
 runCommand "geo-cn.json" { nativeBuildInputs = [ jq ]; } ''
