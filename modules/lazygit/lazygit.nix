@@ -44,10 +44,17 @@ in
           mainBranches = [ "main" ];
           autoFetch = true;
           autoRefresh = true;
-          pagers = [
+          # lazygit >=0.64 schema: git.pagers became git.diffRenderers, and an
+          # entry with no pager command is now spelled `type = "rawGit"`. The
+          # deployed config is a read-only nix-store file, so lazygit's own
+          # auto-migration cannot write it back — it printed a "must be
+          # migrated / permission denied" banner on every launch until this
+          # was spelled the new way here. Older lazygit ignores the unknown
+          # key and falls back to the same raw-git rendering.
+          diffRenderers = [
             {
               colorArg = "always";
-              pager = "";
+              type = "rawGit";
             }
           ];
         };
