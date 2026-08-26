@@ -7,12 +7,14 @@
 #     nix paths → store copies, for hosts without a checkout)
 #
 # Owns: ucc PATH wiring + UCC_HOME, claude → ucc launcher link, system
-# prompt file, codex CLI, claude settings deploy. The ucc installer and the
-# settings-sync units are platform-specific and live with the caller.
+# prompt file, user-scope CLAUDE.md, codex CLI, claude settings deploy. The ucc
+# installer and the settings-sync units are platform-specific and live with the
+# caller.
 #
-# Source type semantics (systemPromptSource):
+# Source type semantics (systemPromptSource, claudeMdSource):
 #   string   → out-of-store symlink (live-edit; target must exist on host)
 #   nix path → copied into the store (immutable; rebuild to change)
+#   null     → unmanaged (claudeMdSource defaults here: opt in per host)
 #
 # force = true on owned files: the ucc installer (claude link) and manual
 # setup (system prompt) may have left real files — HM takes them over.
@@ -117,6 +119,28 @@ in
       '';
     };
 
+    claudeMdSource = lib.mkOption {
+      type = sourceType;
+      default = null;
+      description = ''
+        User-scope CLAUDE.md → ~/.local/share/ucc/shared/CLAUDE.md, the file
+        every profile's CLAUDE.md symlinks to. String = out-of-store symlink
+        (live-edit), path = store copy. null = unmanaged, which is the default:
+        a host opts in explicitly.
+
+        Why this option exists: the ucc installer creates
+        profiles/<n>/CLAUDE.md -> ../../shared/CLAUDE.md unconditionally and
+        treats a dangling link as valid (scripts/repair.mjs), so it never
+        provisions the target. Nothing else did either — the composer writes
+        only the host it runs on. A host with no writer therefore serves every
+        agent an empty user-scope layer while looking correctly installed.
+
+        Set this ONLY on hosts where nothing else writes that path. A host whose
+        composer also writes it would have two writers and the store symlink
+        would fight the composer.
+      '';
+    };
+
     codex.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -185,6 +209,14 @@ in
       // lib.optionalAttrs (cfg.systemPromptSource != null) {
         ".local/share/ucc/shared/SYSTEM_PROMPT.md" = {
           source = resolve cfg.systemPromptSource;
+          force = true;
+        };
+      }
+      // lib.optionalAttrs (cfg.claudeMdSource != null) {
+        # The target of every profiles/<n>/CLAUDE.md symlink. force = true
+        # because a host may already carry a real file here from a hand-copy.
+        ".local/share/ucc/shared/CLAUDE.md" = {
+          source = resolve cfg.claudeMdSource;
           force = true;
         };
       }

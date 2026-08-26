@@ -16,6 +16,14 @@
 #                              (osf.ucc.users.<n>.systemPromptSource; consumed
 #                              by ucc-auto via --system-prompt-file). A string
 #                              source switches it to a live-edit symlink.
+#   ~/.local/share/ucc/shared/CLAUDE.md
+#                              → the target every profiles/<n>/CLAUDE.md
+#                              symlinks to (osf.ucc.users.<n>.claudeMdSource).
+#                              UNMANAGED by default — a host opts in. The ucc
+#                              installer only makes the links and treats a
+#                              dangling one as valid, so without this nothing
+#                              provisions the file and agents load no
+#                              user-scope layer.
 #   codex CLI (flake-pinned)   when codex.enable (paseo's native provider)
 #
 # Multi-user: each user gets ucc-update-<user>, agent-claude-settings-<user>
@@ -53,6 +61,27 @@ let
           "''${config.osf.ucc.repoRoot}/config/agent/SYSTEM_PROMPT.md") for an
           out-of-store live-edit symlink, or another nix path for a different
           store copy.
+        '';
+      };
+      claudeMdSource = lib.mkOption {
+        type = lib.types.nullOr (lib.types.either lib.types.path lib.types.str);
+        default = null;
+        description = ''
+          User-scope CLAUDE.md → ~/.local/share/ucc/shared/CLAUDE.md, the file
+          every profile's CLAUDE.md symlinks to. Defaults to null = UNMANAGED:
+          a host opts in explicitly, so enabling the option fleet-wide changes
+          nothing until a host names a source.
+
+          The ucc installer creates profiles/<n>/CLAUDE.md ->
+          ../../shared/CLAUDE.md unconditionally and treats a dangling link as
+          valid, so it never provisions the target; nothing else did either.
+          A host with no writer serves every agent an empty user-scope layer
+          while looking correctly installed.
+
+          Set a STRING absolute path (e.g.
+          "''${config.osf.ucc.repoRoot}/config/ucc/CLAUDE.md") for an
+          out-of-store live-edit symlink, or a nix path for a store copy.
+          Only set this where nothing else writes that path.
         '';
       };
       uccUser = lib.mkOption {
@@ -455,6 +484,7 @@ in
       osf.ucc = {
         enable = true;
         systemPromptSource = ucfg.systemPromptSource;
+        claudeMdSource = ucfg.claudeMdSource;
         codex.enable = ucfg.codex.enable;
         # codex.package: ucc.nix defaults it to the flake-pinned codex build.
         # claudeSettings: stays null here — the NixOS path owns the settings
