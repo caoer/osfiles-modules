@@ -13,6 +13,14 @@ let
   # credentials and API endpoints live in the ucc-* wrapper (managed by the
   # UCC installer, not by Nix).
   modelPresets = {
+    # No isDefault, for the reason the zenmux catalog below spells out: one
+    # catalog serves every glm-* provider (glm-zai, glm-flash-zai, glm-cos,
+    # glm-flash-cos, glm-vol, …) and each wrapper already pins its own family
+    # via ANTHROPIC_MODEL, so a shared default overrides the pinned model on
+    # launch — the same failure as grok-zenmux-* launching opus.
+    # ids are lowercase: z.ai accepts either case (GLM-5.3-Flash and
+    # glm-5.3-flash both answer 200) and bigmodel.dev.coscene.tech serves the
+    # lowercase spelling, so one string covers both endpoints.
     glm = {
       label = "ZAI (GLM)";
       disallowedTools = [ "WebSearch" ];
@@ -20,7 +28,9 @@ let
         { id = "glm-5-turbo"; label = "GLM 5 Turbo"; }
         { id = "glm-5v-turbo"; label = "GLM 5V Turbo"; }
         { id = "glm-5.1[1m]"; label = "GLM 5.1 (1M)"; }
-        { id = "glm-5.2[1m]"; label = "GLM 5.2 (1M)"; isDefault = true; }
+        { id = "glm-5.2[1m]"; label = "GLM 5.2 (1M)"; }
+        { id = "glm-5.3[1m]"; label = "GLM 5.3 (1M)"; }
+        { id = "glm-5.3-flash[1m]"; label = "GLM 5.3 Flash (1M)"; }
       ];
     };
     qwen = {
@@ -64,21 +74,23 @@ let
         { id = "openai/gpt-5.6-luna[1m]"; label = "OpenAI: GPT-5.6 Luna (1M)"; }
         { id = "openai/gpt-5.6-sol[1m]"; label = "OpenAI: GPT-5.6 Sol (1M)"; }
         { id = "openai/gpt-5.6-terra[1m]"; label = "OpenAI: GPT-5.6 Terra (1M)"; }
-        { id = "google/gemini-3.5-flash[1m]"; label = "Google: Gemini 3.5 Flash (1M)"; }
+        { id = "google/gemini-3.7-flash[1m]"; label = "Google: Gemini 3.7 Flash (1M)"; }
         { id = "google/gemini-3.1-pro-preview[1m]"; label = "Google: Gemini 3.1 Pro Preview (1M)"; }
         { id = "google/gemini-3.1-flash-lite[1m]"; label = "Google: Gemini 3.1 Flash Lite (1M)"; }
         { id = "xiaomi/mimo-v2.5-pro[1m]"; label = "Xiaomi: MiMo-V2.5-Pro (1M)"; }
-        { id = "qwen/qwen3.7-max[1m]"; label = "Qwen: Qwen3.7-Max (1M)"; }
+        { id = "qwen/qwen3.8-max[1m]"; label = "Qwen: Qwen3.8-Max (1M)"; }
         { id = "qwen/qwen3.7-plus[1m]"; label = "Qwen: Qwen3.7-Plus (1M)"; }
-        { id = "anthropic/claude-opus-4.8[1m]"; label = "Anthropic: Claude Opus 4.8 (1M)"; }
+        { id = "anthropic/claude-opus-5[1m]"; label = "Anthropic: Claude Opus 5 (1M)"; }
         { id = "anthropic/claude-sonnet-5[1m]"; label = "Anthropic: Claude Sonnet 5 (1M)"; }
         { id = "anthropic/claude-fable-5[1m]"; label = "Anthropic: Claude Fable 5 (1M)"; }
         { id = "deepseek/deepseek-v4-pro[1m]"; label = "DeepSeek: DeepSeek V4 Pro (1M)"; }
         { id = "deepseek/deepseek-v4-flash[1m]"; label = "DeepSeek: DeepSeek V4 Flash (1M)"; }
         { id = "meituan/longcat-2.0[1m]"; label = "Meituan: LongCat-2.0 (1M)"; }
         { id = "minimax/minimax-m3[1m]"; label = "MiniMax: MiniMax M3 (1M)"; }
-        { id = "z-ai/glm-5.2[1m]"; label = "Z.AI: GLM 5.2 (1M)"; }
-        { id = "x-ai/grok-4.5[1m]"; label = "xAI: Grok 4.5 (1M)"; }
+        { id = "z-ai/glm-5.3[1m]"; label = "Z.AI: GLM 5.3 (1M)"; }
+        { id = "z-ai/glm-5.3-flash[1m]"; label = "Z.AI: GLM 5.3 Flash (1M)"; }
+        { id = "moonshotai/kimi-k3[1m]"; label = "Moonshot: Kimi K3 (1M)"; }
+        { id = "x-ai/grok-4.6[1m]"; label = "xAI: Grok 4.6 (1M)"; }
       ];
     };
   };
