@@ -37,7 +37,7 @@
     # so a future tracer regression fails the build; bump its npmDepsHash
     # alongside this url on every version bump.
     paseo = {
-      url = "github:getpaseo/paseo/v0.5.2";
+      url = "github:getpaseo/paseo/v0.6.1";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
