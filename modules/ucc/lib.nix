@@ -90,7 +90,6 @@ let
         { id = "z-ai/glm-5.3[1m]"; label = "Z.AI: GLM 5.3 (1M)"; }
         { id = "z-ai/glm-5.3-flash[1m]"; label = "Z.AI: GLM 5.3 Flash (1M)"; }
         { id = "moonshotai/kimi-k3[1m]"; label = "Moonshot: Kimi K3 (1M)"; }
-        { id = "x-ai/grok-4.6[1m]"; label = "xAI: Grok 4.6 (1M)"; }
       ];
     };
   };
