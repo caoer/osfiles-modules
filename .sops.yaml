@@ -24,6 +24,10 @@ keys:
   - &zt_lax       age182wxn7gf0kwxq6jrdtr2jx4rykqz5x2k2cs869hzs9x5zzvxffyswwxady
   - &cos_stex_builder age19fmutc3a4pypasypaplwte4jte2zk9j0n8zey93c5dqsdzshc9pqt67p25
 
+  # cos-yul-dev-zzbyy — coscene dev box (microvm on sa-yul-2, user zzbyy);
+  # UCC consumer via hosts/cos-yul-dev-zzbyy/osf.nix in coscene-nix-nixos.
+  - &cos_yul_dev  age1fj2j29c59nj28ze4qwkaydwufkpk35hdld40e386wpns86rcu4ms8mptgl
+
   # --- Member guests (microvm UCC consumers on rs-lax-{1,2}) ---
   - &andrew_lax   age1s35u87hxwcv0tq6a2hhdtj42g7kq37zxjc8452wutgv64x7e84ds5rjm37
   - &ann_lax      age1qks6vmtl0w079tp0rc8tvfv752a4qv53k4g97xtz7agf6339tgsqn06ccg
@@ -50,6 +54,7 @@ creation_rules:
           - *yangming
           - *zt_lax
           - *cos_stex_builder
+          - *cos_yul_dev
           - *andrew_lax
           - *ann_lax
           - *hua_lax
