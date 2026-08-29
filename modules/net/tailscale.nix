@@ -128,11 +128,25 @@ in
           exit 1
         '';
         ExecStart = pkgs.writeShellScript "tailscale-auth" ''
-          # --reset makes this declarative: always converge to the flags below,
-          # regardless of current BackendState (fixes stale "Running" + logged-out).
+          # Skip when already Running: an always-up --reset turns any auth-key
+          # problem into an activation failure (status 4) on EVERY deploy, even
+          # while the node is fine — bwg-us-lax-megabox spent a month unable to
+          # deploy because its expired OAuth secret 401'd here on each switch
+          # (2026-08-29). Converging --reset stays for the NeedsLogin path.
+          status=$(${pkgs.tailscale}/bin/tailscale status --json 2>/dev/null | ${pkgs.jq}/bin/jq -r '.BackendState // "NoState"')
+          if [ "$status" = "Running" ]; then
+            exit 0
+          fi
+          # Fail fast on a missing key: `up --authkey=""` falls back to an
+          # INTERACTIVE login URL and hangs the activation forever.
+          authkey=$(cat ${cfg.authKeyPath} 2>/dev/null || true)
+          if [ -z "$authkey" ]; then
+            echo "tailscale-auth: authkey not present yet — skipping (post-secret restart will authenticate)." >&2
+            exit 1
+          fi
           ${pkgs.tailscale}/bin/tailscale up \
             --reset \
-            --authkey="$(cat ${cfg.authKeyPath})" \
+            --authkey="$authkey" \
             --hostname=${cfg.hostname} \
             --advertise-tags=${lib.concatStringsSep "," cfg.advertiseTags} \
             --accept-dns=${lib.boolToString cfg.acceptDns} \
