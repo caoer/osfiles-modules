@@ -485,8 +485,11 @@ in
     #
     # Per-user guard: each secret is mode 0400 owned by its user, so a shell
     # belonging to anyone else reads nothing and exports nothing.
-    # shellInit lands in /etc/set-environment, which /etc/profile and
-    # /etc/zshenv both source. (/etc/profile.d/*.sh is NOT sourced by NixOS.)
+    # shellInit is inlined into BOTH /etc/profile and /etc/zshenv, just below
+    # the line where each sources /etc/set-environment — grep the two files,
+    # not set-environment, when tracing where an export came from. /etc/zshenv
+    # runs for every zsh, so a non-login shell gets it too.
+    # (/etc/profile.d/*.sh is NOT sourced by NixOS.)
     environment.shellInit = lib.concatStrings (
       lib.mapAttrsToList (
         name: ucfg:

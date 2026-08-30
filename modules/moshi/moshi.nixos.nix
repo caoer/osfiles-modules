@@ -135,8 +135,10 @@ in
     #   - daemon: %t, which systemd expands to the unit's runtime dir;
     #   - shells: the live uid, so it is right for every user without needing
     #     the uid at eval time.
-    # shellInit lands in /etc/set-environment, which /etc/profile and
-    # /etc/zshenv both source. (/etc/profile.d/*.sh is NOT sourced by NixOS.)
+    # shellInit is inlined into BOTH /etc/profile and /etc/zshenv, just below
+    # the line where each sources /etc/set-environment — grep the two files,
+    # not set-environment, when tracing where an export came from.
+    # (/etc/profile.d/*.sh is NOT sourced by NixOS.)
     environment.shellInit = ''
       export MOSHI_SOCKET_PATH="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/moshi-hook.sock"
     '';
