@@ -25,6 +25,9 @@
 #                              provisions the file and agents load no
 #                              user-scope layer.
 #   codex CLI (flake-pinned)   when codex.enable (paseo's native provider)
+#   ENCRYPTION_PASSWORD        exported into that user's shells from the sops
+#                              secret — the env `ucc-cli update` demands when
+#                              the user runs it by hand
 #
 # Multi-user: each user gets ucc-update-<user>, agent-claude-settings-<user>
 # units. On a multi-user host, set distinct sops secret names
@@ -474,6 +477,29 @@ in
     );
 
     systemd.services = installerUnits // settingsUnits;
+
+    # `ucc-cli update` run by hand refuses without ENCRYPTION_PASSWORD ("Error:
+    # ENCRYPTION_PASSWORD is required."). ucc-update-<user> reads the secret off
+    # disk itself, so only the interactive path was missing it — every UCC host
+    # had a user who could not update their own install.
+    #
+    # Per-user guard: each secret is mode 0400 owned by its user, so a shell
+    # belonging to anyone else reads nothing and exports nothing.
+    # shellInit lands in /etc/set-environment, which /etc/profile and
+    # /etc/zshenv both source. (/etc/profile.d/*.sh is NOT sourced by NixOS.)
+    environment.shellInit = lib.concatStrings (
+      lib.mapAttrsToList (
+        name: ucfg:
+        let
+          passwordPath = config.sops.secrets.${ucfg.encryptionPasswordSecret}.path;
+        in
+        ''
+          if [ "$(id -un 2>/dev/null)" = "${name}" ] && [ -r ${passwordPath} ]; then
+            export ENCRYPTION_PASSWORD="$(cat ${passwordPath})"
+          fi
+        ''
+      ) cfg.users
+    );
 
     # Home layer via the shared platform-neutral fragment. Sources are
     # strings → out-of-store symlinks into the host's osfiles checkout
