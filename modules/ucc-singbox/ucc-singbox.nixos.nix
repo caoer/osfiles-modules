@@ -93,11 +93,17 @@ let
     # - Root (uid 0): omit include_uid so TUN captures ALL users' traffic
     # - Non-root: add include_uid to scope TUN to that user only
     # - Enable auto_redirect on Linux (always recommended per upstream docs)
-    # - Exclude this host's own addresses from auto_route / auto_redirect.
-    #   Connecting to our public IP (or any local iface) is captured, sent
-    #   via `direct` back to the same IP, and captured again — a userspace
-    #   hairpin that pegs CPU (xz-workstation-prod, dest :auto_redirect
-    #   listen port, 2026-08).
+    # - Exclude this host's own addresses from auto_route / auto_redirect, and
+    #   reject them in route.rules. sing-tun binds the auto_redirect listener
+    #   on IP:0_0_0_0 at a random port with no config knob (redirect_linux.go
+    #   picks netip.IPv4Unspecified), so on a host with a public IP that
+    #   listener is internet-reachable. A connection that did not arrive
+    #   through the REDIRECT rule carries no conntrack original-dst, so
+    #   sing-box reads the socket's own address as the destination — dest
+    #   <own-ip>:<redirect-port>. A `bypass` action hands that back to the
+    #   listener through `direct`, a self-feeding hairpin that pegs CPU;
+    #   `reject` closes the connection instead. The redirectGuard unit below
+    #   drops the seed traffic at the packet layer.
     # - Exclude docker/br-/veth from auto_route so published containers
     #   don't enter the TUN.
     # - tun-us: force strict_route=false. API default true blackholes
@@ -139,7 +145,7 @@ let
               [
                 { action: "sniff" },
                 { action: "hijack-dns", protocol: "dns" },
-                { action: "bypass", ip_cidr: $ex_addr }
+                { action: "reject", ip_cidr: $ex_addr }
               ]
               + ((.route.rules // []) | map(select(
                   .action != "sniff" and .action != "hijack-dns"
@@ -173,6 +179,48 @@ let
     echo "${serviceName}: ready — $profiles profile route(s), uid=$target_uid${lib.optionalString isStrict ", strict mode (lan-proxy → ${cfg.lanProxy.server}:${toString cfg.lanProxy.port})"}"
   '';
 
+  guardTable = "${serviceName}-guard";
+
+  # sing-box picks the auto_redirect port at start and binds it on IP:0_0_0_0.
+  # Only two paths legitimately reach that listener: an output-chain REDIRECT
+  # (rewritten to IP:127_0_0_1, arrives on lo) and a prerouting REDIRECT (arrives
+  # NAT'd, so conntrack carries the dnat status). Everything else on that port
+  # is an unsolicited connection to the host's public IP — drop it, so the
+  # transparent-proxy listener is not an open port on the internet.
+  redirectGuard = pkgs.writeShellScript "${serviceName}-redirect-guard" ''
+    set -u
+    nft=${pkgs.nftables}/bin/nft
+
+    port=""
+    for _ in $(${pkgs.coreutils}/bin/seq 1 60); do
+      port="$($nft list table inet sing-box 2>/dev/null \
+        | ${pkgs.gnugrep}/bin/grep -oE 'redirect to :[0-9]+' \
+        | ${pkgs.gnugrep}/bin/grep -oE '[0-9]+' \
+        | ${pkgs.coreutils}/bin/head -1)"
+      [ -n "$port" ] && break
+      ${pkgs.coreutils}/bin/sleep 1
+    done
+
+    if [ -z "$port" ]; then
+      echo "${serviceName}: no auto_redirect port in table inet sing-box — guard not installed" >&2
+      exit 0
+    fi
+
+    $nft delete table inet ${guardTable} 2>/dev/null
+    $nft -f - <<EOF
+    table inet ${guardTable} {
+      chain input {
+        type filter hook input priority filter - 5; policy accept;
+        iifname "lo" return
+        meta l4proto != tcp return
+        tcp dport $port ct status dnat return
+        tcp dport $port counter drop
+      }
+    }
+    EOF
+    echo "${serviceName}: redirect-port guard installed — tcp/$port drops non-redirected inbound"
+  '';
+
   # Residual / conflicting TUN state:
   # - A crash or SIGKILL leaves priority-90xx rules + route table 2022 (auto_route)
   #   pointing at a dead tun — blackhole risk on next start.
@@ -183,6 +231,8 @@ let
   tunCleanup = pkgs.writeShellScript "${serviceName}-tun-cleanup" ''
     set +e
     ip=${pkgs.iproute2}/bin/ip
+
+    ${pkgs.nftables}/bin/nft delete table inet ${guardTable} 2>/dev/null
 
     for pid in /proc/[0-9]*; do
       p=''${pid#/proc/}
@@ -371,6 +421,8 @@ in
           fetchScript
         ];
         ExecStart = "${singboxPkg}/bin/sing-box -D /var/lib/${serviceName} run -c ${runtimeConfig}";
+        # Fence the auto_redirect listener once sing-box has published its port.
+        ExecStartPost = "+${redirectGuard}";
         # Unconditional teardown so crash residue cannot poison the next start.
         ExecStopPost = "+${tunCleanup}";
         # No CapabilityBoundingSet — process_path_regex routing needs broad
