@@ -321,9 +321,10 @@ rows = [["state_icon", "workspace", "tab"], ["agent"]]
 #
 # What the text sits on: every built-in theme sets sidebar_bg = Color::Reset
 # (herdr src/app/state.rs), so the agent panel's background is the TERMINAL's,
-# not herdr's panel_bg. The reference pair is therefore the wezterm scheme
-# pair for the active family (config/wezterm/common.lua theme_families):
-# Tokyo Night #1a1b26 and Tokyo Night Day #e1e2e7.
+# not herdr's panel_bg — herdr's own dark_name/light_name never touch it. On
+# any host that means whatever scheme the attached terminal is running; the
+# mac's pair (config/wezterm/common.lua theme_families, family tokyo-night =
+# Tokyo Night #1a1b26 / Tokyo Night Day #e1e2e7) is the design reference.
 #
 # One hex serves both: herdr's SidebarTokenColor (src/config/sidebar.rs) takes
 # strict #RGB/#RRGGBB — no palette name, no {light=,dark=} pair — and
@@ -348,8 +349,13 @@ rows = [["state_icon", "workspace", "tab"], ["agent"]]
 # a token that should recede uses low chroma instead.
 #
 # Adding a token: pick a hue, take a chroma off the ladder, and solve OKLCH
-# lightness for Y = 0.173. Changing the wezterm theme family moves both
-# backgrounds — recompute Y and re-derive every hex.
+# lightness for Y = 0.173.
+#
+# Switching terminal theme family does NOT require re-deriving these. Y = 0.173
+# sits near the geometric-mean optimum for any usual dark/light pair, and this
+# set was measured at >= 3.16 on both halves of tokyo-night, catppuccin,
+# gruvbox, solarized and rose-pine. Re-derive only for a background far outside
+# that range — a near-black or a paper-white terminal.
 claude = [
   [
     "state_icon",
