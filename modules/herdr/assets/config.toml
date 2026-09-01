@@ -317,51 +317,72 @@ rows = [["state_icon", "workspace", "tab"], ["agent"]]
 # $name = /rename title ONLY (omitted until renamed) · $profile = ucc profile (always present)
 # $id = 8-char session id (rightmost: survives overflow)
 # $idle = time since the session's last hook event ("5m"/"1h5m"/"2d3h"; omitted while active <1m)
-# CONTRAST CONTRACT for every fg below — read before changing one.
-# Token fg is a single hex and appearance-blind by construction: herdr's
-# SidebarTokenColor (src/config/sidebar.rs) takes strict #RGB/#RRGGBB only —
-# no palette name, no {light=,dark=} pair — and `auto_switch` swaps the base
-# Palette without ever reaching apply_token_style. So one hex serves BOTH
-# backgrounds of the theme pair: tokyo-night #1a1b26 and tokyo-night-day
-# #e1e2e7. Against those two the contrast ceiling for ANY single hex is
-# 3.63:1 — enough for WCAG UI text, never for body text. Target >=3.2 on
-# each side; neither side gets to be crisp. `dim` is off everywhere: DIM
-# subtracts from an already-capped contrast, and a token needing to recede
-# uses a floor-level hex (#6c7086, 3.50/3.78) instead.
-# Re-measure every hex against both panel_bg values if the theme pair changes.
+# COLOUR CONTRACT for every fg below — read before changing one.
+#
+# What the text sits on: every built-in theme sets sidebar_bg = Color::Reset
+# (herdr src/app/state.rs), so the agent panel's background is the TERMINAL's,
+# not herdr's panel_bg. The reference pair is therefore the wezterm scheme
+# pair for the active family (config/wezterm/common.lua theme_families):
+# Tokyo Night #1a1b26 and Tokyo Night Day #e1e2e7.
+#
+# One hex serves both: herdr's SidebarTokenColor (src/config/sidebar.rs) takes
+# strict #RGB/#RRGGBB — no palette name, no {light=,dark=} pair — and
+# auto_switch swaps the base Palette without ever reaching apply_token_style.
+#
+# Contrast depends on LUMINANCE ALONE, so hue and chroma are free. Every hex
+# below sits at WCAG relative luminance Y = 0.173, the geometric-mean optimum
+# between the two backgrounds, which yields 3.63:1 on BOTH — the ceiling for
+# any single hex against this pair. Nothing here is brighter or dimmer than
+# anything else, so nothing is harder to read than anything else.
+#
+# Hierarchy is carried by CHROMA, never by brightness — that is what keeps a
+# recessive token legible instead of merely faint:
+#   C 0.115  role tokens        the scan key, most saturated
+#   C 0.105  $name              renamed title, emphasis
+#   C 0.070  $session, $idle    context; $idle is the one warm hue, so a stale
+#                               seat catches the eye against the cool field
+#   C 0.030  $profile           bold carries it; colour stays quiet
+#   C 0.014  $id, task title    near-neutral, reads as body text
+#
+# `dim` is off everywhere: DIM subtracts from an already-capped contrast, and
+# a token that should recede uses low chroma instead.
+#
+# Adding a token: pick a hue, take a chroma off the ladder, and solve OKLCH
+# lightness for Y = 0.173. Changing the wezterm theme family moves both
+# backgrounds — recompute Y and re-derive every hex.
 claude = [
   [
     "state_icon",
-    { token = "$role_worker", fg = "#309217", bold = false, dim = false },
-    { token = "$role_advisor", fg = "#ab1fd0", bold = true, dim = false },
-    { token = "$role_leader", fg = "#1e66f5", bold = false, dim = false },
-    { token = "$role", fg = "#6c7086", bold = false, dim = false },
-    { token = "$name", fg = "#2e7de9", bold = true, dim = false },
-    { token = "$profile", fg = "#6c7086", bold = true, dim = false },
-    { token = "$id", fg = "#6c7086", dim = false },
+    { token = "$role_worker", fg = "#31824d", bold = false, dim = false },
+    { token = "$role_advisor", fg = "#8c63aa", bold = true, dim = false },
+    { token = "$role_leader", fg = "#4275b6", bold = false, dim = false },
+    { token = "$role", fg = "#6e7480", bold = false, dim = false },
+    { token = "$name", fg = "#007f8c", bold = true, dim = false },
+    { token = "$profile", fg = "#6b7386", bold = true, dim = false },
+    { token = "$id", fg = "#70747c", dim = false },
   ],
   [
-    { token = "$session", fg = "#006ebd", dim = false },
-    { token = "$idle", fg = "#9e5c00", bold = false, dim = false },
+    { token = "$session", fg = "#63739e", dim = false },
+    { token = "$idle", fg = "#aa6138", bold = false, dim = false },
   ],
   [
-    { token = "terminal_title_stripped", fg = "#6f8070", dim = false },
+    { token = "terminal_title_stripped", fg = "#6e757e", dim = false },
   ],
 ]
 
 # Grok has no ccc-statusd identity tokens ($role/$profile/…); style from
-# built-ins only. Palette is deliberately not claude-blue: xAI magenta/
-# purple accents so grok rows are scannable next to the fleet. Same contrast
-# contract as claude above.
+# built-ins only. Hues are deliberately not claude-blue: xAI magenta/pink so
+# grok rows are scannable next to the fleet. Same luminance lock and chroma
+# ladder as claude above.
 grok = [
   [
     "state_icon",
-    { token = "workspace", fg = "#8138ff", bold = true, dim = false },
-    { token = "tab", fg = "#6b7280", bold = false, dim = false },
-    { token = "agent", fg = "#a855f7", bold = true, dim = false },
+    { token = "workspace", fg = "#9f5c99", bold = true, dim = false },
+    { token = "tab", fg = "#6e7480", bold = false, dim = false },
+    { token = "agent", fg = "#a05f81", bold = true, dim = false },
   ],
   [
-    { token = "terminal_title_stripped", fg = "#8436ff", dim = false },
+    { token = "terminal_title_stripped", fg = "#866c81", dim = false },
   ],
 ]
 
