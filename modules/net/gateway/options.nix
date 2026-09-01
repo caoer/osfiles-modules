@@ -351,6 +351,40 @@ in
           description = "Extra route rules inserted before mesh/private catch-alls.";
         };
 
+        preSniffRouteRules = mkOption {
+          type = types.listOf (types.attrsOf types.anything);
+          default = [ ];
+          description = ''
+            Route rules emitted as the VERY FIRST rules, above `sniff`.
+            For terminal ip_cidr rules on raw-IP destinations (mesh bands
+            via a relay) — server-speaks-first flows (SSH) otherwise pay
+            the sniff timeout for nothing.
+          '';
+        };
+
+        directCidrs = mkOption {
+          type = types.nullOr (types.listOf types.str);
+          default = null;
+          description = ''
+            CIDRs bypassed at the kernel (route_direct_cidrs — they never
+            enter sing-box userspace). null keeps the module default:
+            locus-mesh supernet, coscene-mesh, k8s svc/pod, CGNAT. Set
+            explicitly on fleets that are not locus members, or to carve
+            bands OUT of a mesh so a relay outbound can route them.
+          '';
+        };
+
+        directDomains = mkOption {
+          type = types.nullOr (types.listOf types.str);
+          default = null;
+          description = ''
+            Domain suffixes routed direct (and resolved via the domestic
+            DNS). null keeps the legacy default: .lockin.mesh, .et.net and
+            the tailnet — the locus vocabulary. Set explicitly on fleets
+            that are not locus members (e.g. [ ".et.net" ".<tailnet>" ]).
+          '';
+        };
+
         dnsServers = mkOption {
           type = types.listOf (types.attrsOf types.anything);
           default = [ ];

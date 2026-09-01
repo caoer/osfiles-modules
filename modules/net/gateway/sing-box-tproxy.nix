@@ -90,29 +90,55 @@ lib.mkIf (cfg.enable && ecfg.enable && tp.enable) {
     ];
 
     extraGeneratorArgs = {
-      route_direct_cidrs = [
-        mesh.meshSubnet
-        nets.cosceneMesh.cidr
-        nets.k8s.svcCidr
-        nets.k8s.podCidr
-        wk.cgnat
-      ];
+      # Kernel bypass list. tp.directCidrs = null keeps the legacy default
+      # (locus + coscene meshes, k8s, CGNAT); a fleet that is not a locus
+      # member declares its own list.
+      route_direct_cidrs =
+        if tp.directCidrs != null then
+          tp.directCidrs
+        else
+          [
+            mesh.meshSubnet
+            nets.cosceneMesh.cidr
+            nets.k8s.svcCidr
+            nets.k8s.podCidr
+            wk.cgnat
+          ];
       find_process = true;
-      # route_direct_domains: use generator defaults (.lockin.mesh, .et.net, .ts.net)
+    }
+    # route_direct_domains: null = generator defaults (.lockin.mesh, .et.net,
+    # .ts.net — the locus vocabulary); a non-locus fleet sets its own.
+    // lib.optionalAttrs (tp.directDomains != null) {
+      route_direct_domains = tp.directDomains;
     };
 
-    extraRouteRules = tp.routeRules ++ [
-      {
-        domain_suffix = [ ".lockin.mesh" ];
-        action = "route";
-        outbound = "direct";
-      }
-      {
-        domain_suffix = [ ".${cfg.tailnetName}" ];
-        action = "route";
-        outbound = "direct";
-      }
-    ];
+    extraPreSniffRouteRules = tp.preSniffRouteRules;
+
+    extraRouteRules =
+      tp.routeRules
+      ++ (
+        if tp.directDomains != null then
+          lib.optionals (tp.directDomains != [ ]) [
+            {
+              domain_suffix = tp.directDomains;
+              action = "route";
+              outbound = "direct";
+            }
+          ]
+        else
+          [
+            {
+              domain_suffix = [ ".lockin.mesh" ];
+              action = "route";
+              outbound = "direct";
+            }
+            {
+              domain_suffix = [ ".${cfg.tailnetName}" ];
+              action = "route";
+              outbound = "direct";
+            }
+          ]
+      );
 
     dns = {
       domestic = {

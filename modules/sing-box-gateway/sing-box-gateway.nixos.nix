@@ -63,6 +63,7 @@ let
         extraOutbounds
         extraRouteRules
         ;
+      preSniffRouteRules = cfg.extraPreSniffRouteRules;
 
       tun_address = cfg.tunAddresses;
       route_exclude_address = cfg.routeExcludeAddresses;
@@ -258,6 +259,17 @@ in
       type = types.listOf (types.attrsOf types.anything);
       default = [ ];
       description = "Extra route rules inserted before mesh/private catch-alls.";
+    };
+
+    extraPreSniffRouteRules = mkOption {
+      type = types.listOf (types.attrsOf types.anything);
+      default = [ ];
+      description = ''
+        Route rules emitted as the VERY FIRST rules, above `sniff`. For
+        terminal ip_cidr rules on raw-IP destinations (e.g. mesh bands via a
+        relay) — server-speaks-first flows (SSH) otherwise pay the sniff
+        timeout for nothing.
+      '';
     };
 
     # ── DNS ─────────────────────────────────────────────────────────

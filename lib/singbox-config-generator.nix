@@ -145,6 +145,15 @@
   # ── Extra route rules (before mesh catch-alls) ────────────────────
   extraRouteRules ? [ ],
 
+  # ── Pre-sniff route rules (the VERY FIRST rules, above `sniff`) ───
+  # For ip_cidr rules on raw-IP destinations (mesh bands via a relay):
+  # `action: route` is terminal, so matching flows skip sniff entirely.
+  # Server-speaks-first protocols (SSH) otherwise pay the full sniff
+  # timeout waiting for client bytes that never come — measured on
+  # cos-stex-ucc: 1069ms vs 463ms connect to the same mesh address.
+  # A raw-IP destination has no name to sniff and no DNS to hijack.
+  preSniffRouteRules ? [ ],
+
   # ── Clash API ─────────────────────────────────────────────────────
   clashApi ? null,
   apiService ? null,
@@ -448,9 +457,12 @@ let
 
   # ── Route rules ───────────────────────────────────────────────────
   routeRules =
+    # Caller's pre-sniff rules first: terminal `route` actions for raw-IP
+    # destinations that must never wait on the sniff timeout.
+    preSniffRouteRules
     # Pre-sniff bypass: kernel-level direct for mesh/overlay CIDRs.
     # auto_redirect skips these at the kernel — never enters sing-box userspace.
-    lib.optionals (route_direct_cidrs != [ ]) [
+    ++ lib.optionals (route_direct_cidrs != [ ]) [
       {
         ip_cidr = route_direct_cidrs;
         action = "bypass";
