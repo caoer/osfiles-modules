@@ -83,6 +83,7 @@ let
         { id = "anthropic/claude-opus-5[1m]"; label = "Anthropic: Claude Opus 5 (1M)"; }
         { id = "anthropic/claude-sonnet-5[1m]"; label = "Anthropic: Claude Sonnet 5 (1M)"; }
         { id = "anthropic/claude-fable-5[1m]"; label = "Anthropic: Claude Fable 5 (1M)"; }
+        { id = "anthropic/claude-fable-5-1[1m]"; label = "Anthropic: Claude Fable 5.1 (1M)"; }
         { id = "deepseek/deepseek-v4-pro[1m]"; label = "DeepSeek: DeepSeek V4 Pro (1M)"; }
         { id = "deepseek/deepseek-v4-flash[1m]"; label = "DeepSeek: DeepSeek V4 Flash (1M)"; }
         { id = "meituan/longcat-2.0[1m]"; label = "Meituan: LongCat-2.0 (1M)"; }
