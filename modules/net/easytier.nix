@@ -284,6 +284,17 @@ in
           };
         };
 
+        # mosh on every mesh host, reachable over the mesh alone. The
+        # "trusted mesh peers" rules below admit its UDP range from mesh
+        # sources, so openFirewall stays off — on, it opens 60000-61000 on
+        # every interface, WAN included. mosh-server binds the address the SSH
+        # session arrived on (`mosh --bind-server=ssh`, the client default), so
+        # a session opened against the mesh IP stays on the mesh.
+        programs.mosh = {
+          enable = lib.mkDefault true;
+          openFirewall = lib.mkDefault false;
+        };
+
         # ── Firewall: module-owned port declarations ──────────────────
         # Listener ports declared via osf.network.services (zone-aware,
         # collision-detected). Ports derived from cfg.listeners URIs.
