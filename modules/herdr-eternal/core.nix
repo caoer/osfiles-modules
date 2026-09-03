@@ -54,6 +54,29 @@ in
       description = "EasyTier unit that brings up the listen address; ordered after it.";
     };
 
+    quic = {
+      listen = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "<lan-ip>:24333";
+        description = ''
+          Optional QUIC listener (UDP, TLS terminated by the server itself). The
+          way in for a client that cannot reach the mesh: bind an address behind
+          a public DNAT and hand the client `quic_addr` + `quic_ca`.
+        '';
+      };
+      certFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "PEM certificate for the QUIC listener (SAN = the address the client dials).";
+      };
+      keyFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "PEM private key for the QUIC listener, readable by `user`.";
+      };
+    };
+
     extraPath = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
@@ -62,6 +85,13 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = cfg.quic.listen == null || (cfg.quic.certFile != null && cfg.quic.keyFile != null);
+        message = "osf.herdrEternal.quic: listen needs certFile and keyFile.";
+      }
+    ];
+
     systemd.services.herdr-eternal-server = {
       description = "herdr-eternal-server — resumable transport for herdr --remote (${cfg.user})";
       after = [ "network-online.target" ] ++ lib.optional (cfg.meshUnit != null) cfg.meshUnit;
@@ -91,7 +121,18 @@ in
             )
           )
         ];
-        ExecStart = "${cfg.package}/bin/herdr-eternal-server --listen ${cfg.listen} --token-file ${cfg.tokenFile}";
+        ExecStart = lib.concatStringsSep " " (
+          [
+            "${cfg.package}/bin/herdr-eternal-server"
+            "--listen ${cfg.listen}"
+            "--token-file ${cfg.tokenFile}"
+          ]
+          ++ lib.optionals (cfg.quic.listen != null) [
+            "--quic-listen ${cfg.quic.listen}"
+            "--quic-cert ${cfg.quic.certFile}"
+            "--quic-key ${cfg.quic.keyFile}"
+          ]
+        );
         # Agent socket + handed-over session state survive restarts.
         RuntimeDirectory = "herdr-eternal-server";
         RuntimeDirectoryMode = "0700";

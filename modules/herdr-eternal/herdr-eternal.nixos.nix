@@ -20,21 +20,35 @@
 }:
 let
   cfg = config.osf.herdrEternal;
-  port = lib.toInt (lib.last (lib.splitString ":" cfg.listen));
+  portOf = addr: lib.toInt (lib.last (lib.splitString ":" addr));
+  port = portOf cfg.listen;
 in
 {
   imports = [ ./core.nix ];
 
-  options.osf.herdrEternal.interface = lib.mkOption {
-    type = lib.types.str;
-    example = "tun0";
-    description = "Interface carrying the listen address; TCP <port> is opened on it alone.";
+  options.osf.herdrEternal = {
+    interface = lib.mkOption {
+      type = lib.types.str;
+      example = "tun0";
+      description = "Interface carrying the listen address; TCP <port> is opened on it alone.";
+    };
+    quic.interface = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "enp0s8";
+      description = "Interface carrying quic.listen; its UDP port is opened on it alone.";
+    };
   };
 
   config = lib.mkIf cfg.enable {
     osf.herdrEternal.package =
       lib.mkDefault
         herdrEternalFlake.packages.${pkgs.stdenv.hostPlatform.system}.default;
-    networking.firewall.interfaces.${cfg.interface}.allowedTCPPorts = [ port ];
+    networking.firewall.interfaces = lib.mkMerge [
+      { ${cfg.interface}.allowedTCPPorts = [ port ]; }
+      (lib.mkIf (cfg.quic.listen != null) {
+        ${cfg.quic.interface}.allowedUDPPorts = [ (portOf cfg.quic.listen) ];
+      })
+    ];
   };
 }
