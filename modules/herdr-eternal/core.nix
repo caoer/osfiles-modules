@@ -7,8 +7,10 @@
 # The mac (osfiles hosts/zmax) runs `herdr-eternal-ssh` as herdr's
 # `[remote].ssh_command`; a target declared in its ~/.config/herdr-eternal/
 # config.toml rides this unit instead of ssh. The exec channel runs herdr's
-# remote bootstrap in `user`'s shell, so `herdr` must be findable on the
-# unit's PATH (or herdr installs itself into ~/.local/bin, which is on it).
+# remote bootstrap in `user`'s shell; `herdrPackage` installs the herdr the
+# client expects (same version string) so that probe finds it in
+# /run/current-system/sw/bin and never streams the binary over the channel —
+# that stream stalls after ~10 MB on herdr-eternal 0.1.0.
 #
 # Listen on the host's mesh address only: plain ws:// then rides EasyTier's
 # encryption and never touches LAN or WAN. Auth is a pre-shared token — one
@@ -29,6 +31,16 @@ in
     package = lib.mkOption {
       type = lib.types.package;
       description = "herdr-eternal package providing bin/herdr-eternal-server.";
+    };
+
+    herdrPackage = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      description = ''
+        herdr installed system-wide and first on the unit PATH. Must report the
+        version the client runs, or `herdr --remote` re-bootstraps over the
+        exec channel.
+      '';
     };
 
     user = lib.mkOption {
@@ -92,6 +104,8 @@ in
       }
     ];
 
+    environment.systemPackages = lib.optional (cfg.herdrPackage != null) cfg.herdrPackage;
+
     systemd.services.herdr-eternal-server = {
       description = "herdr-eternal-server — resumable transport for herdr --remote (${cfg.user})";
       after = [ "network-online.target" ] ++ lib.optional (cfg.meshUnit != null) cfg.meshUnit;
@@ -107,7 +121,8 @@ in
           (
             "PATH="
             + lib.concatStringsSep ":" (
-              cfg.extraPath
+              lib.optional (cfg.herdrPackage != null) "${cfg.herdrPackage}/bin"
+              ++ cfg.extraPath
               ++ [
                 "${home}/.local/bin"
                 "/etc/profiles/per-user/${cfg.user}/bin"

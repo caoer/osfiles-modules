@@ -1,7 +1,7 @@
 # modules/herdr-eternal/herdr-eternal.nixos.nix — herdr-eternal-server on a
-# NixOS member node: the core unit (./core.nix) plus the package default from
-# this flake's herdr-eternal input and the firewall hole on the mesh
-# interface the listener binds. Mirror of osfiles modules/nixos/herdr-eternal.nix.
+# NixOS member node: the core unit (./core.nix) plus the package defaults from
+# this flake's herdr-eternal and herdr inputs and the firewall hole on the
+# mesh interface the listener binds. Mirror of osfiles modules/nixos/herdr-eternal.nix.
 #
 #   osf.herdrEternal = {
 #     enable = true;
@@ -11,7 +11,7 @@
 #     meshUnit = "easytier.service";
 #     tokenFile = config.sops.secrets.herdr_eternal_token.path;
 #   };
-{ herdrEternalFlake }:
+{ herdrEternalFlake, herdrFlake }:
 {
   config,
   lib,
@@ -44,6 +44,10 @@ in
     osf.herdrEternal.package =
       lib.mkDefault
         herdrEternalFlake.packages.${pkgs.stdenv.hostPlatform.system}.default;
+    # The fleet herdr pin: the same version the mac runs.
+    osf.herdrEternal.herdrPackage =
+      lib.mkDefault
+        herdrFlake.packages.${pkgs.stdenv.hostPlatform.system}.herdr;
     networking.firewall.interfaces = lib.mkMerge [
       { ${cfg.interface}.allowedTCPPorts = [ port ]; }
       (lib.mkIf (cfg.quic.listen != null) {

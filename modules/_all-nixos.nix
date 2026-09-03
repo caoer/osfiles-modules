@@ -5,6 +5,7 @@
   paseoFlake,
   tmuxSrc,
   herdrEternalFlake,
+  herdrFlake,
 }:
 { ... }:
 {
@@ -19,6 +20,6 @@
     ./sing-box-gateway/sing-box-gateway.nixos.nix
     ./ucc-singbox/ucc-singbox.nixos.nix
     ./moshi/moshi.nixos.nix
-    (import ./herdr-eternal/herdr-eternal.nixos.nix { inherit herdrEternalFlake; })
+    (import ./herdr-eternal/herdr-eternal.nixos.nix { inherit herdrEternalFlake herdrFlake; })
   ];
 }

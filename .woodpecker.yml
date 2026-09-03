@@ -18,6 +18,11 @@ when:
     branch: main
   - event: manual
 
+# A docker agent, not the mac's local-backend agent: there `image:` names a
+# shell and "nixos/nix:2.34.8" fails at exec.
+labels:
+  platform: linux/amd64
+
 steps:
   - name: build-and-cache
     image: nixos/nix:2.34.8

@@ -43,13 +43,15 @@
 
     # THE central herdr pin for the whole fleet (agent terminal multiplexer),
     # paired with modules/herdr — one binary AND one config.toml everywhere.
-    # Owner is herdrdev; ogulcancelik/herdr is the old name and still 301s to
-    # it (both resolve v0.8.0 to 857196de). No upstream binary cache (docs say
-    # build from source), so following our nixpkgs is free.
-    herdr = {
-      url = "github:herdrdev/herdr/v0.8.0";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    # Our fork: upstream release + the `[remote].ssh_command` knob the mac's
+    # herdr-eternal client needs, built by the fork's Woodpecker pipeline and
+    # served from cache.0xtau.com. Deliberately NO `inputs.nixpkgs.follows`:
+    # the cached closure is keyed on the fork's own lock, and a follows here
+    # means every host compiles Rust + zig again. osfiles pins the same URL;
+    # keep both locks on one rev or `herdr --remote` re-bootstraps on a
+    # version mismatch. To bump: rebase the fork's main on the new upstream
+    # tag, push, `nix flake update herdr` here and in osfiles.
+    herdr.url = "git+https://git.0xdao.app/caoer115/herdr?ref=main&shallow=1";
 
     # herdr-eternal — resumable transport for `herdr --remote` (WebSocket,
     # byte-exact resume across sleep and roaming). Member nodes run its server
@@ -154,6 +156,7 @@
         # herdr-eternal-server for `herdr --remote` (osf.herdrEternal.*).
         herdr-eternal = import ./modules/herdr-eternal/herdr-eternal.nixos.nix {
           herdrEternalFlake = inputs.herdr-eternal;
+          herdrFlake = inputs.herdr;
         };
 
         # Default: member-base + agent NixOS modules (ucc, paseo, herdr-eternal).
@@ -161,6 +164,7 @@
           paseoFlake = paseo;
           tmuxSrc = inputs.tmux-src;
           herdrEternalFlake = inputs.herdr-eternal;
+          herdrFlake = inputs.herdr;
         };
       };
 
