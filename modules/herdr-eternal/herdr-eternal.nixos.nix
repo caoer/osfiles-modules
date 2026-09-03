@@ -1,7 +1,8 @@
 # modules/herdr-eternal/herdr-eternal.nixos.nix — herdr-eternal-server on a
-# NixOS member node: the core unit (./core.nix) plus the package defaults from
-# this flake's herdr-eternal and herdr inputs and the firewall hole on the
-# mesh interface the listener binds. Mirror of osfiles modules/nixos/herdr-eternal.nix.
+# NixOS host: the core unit (./core.nix) plus the package defaults from this
+# flake's herdr-eternal and herdr inputs and the firewall hole on the mesh
+# interface the listener binds. The one source for osfiles and member repos
+# alike (in nixosModules.default).
 #
 #   osf.herdrEternal = {
 #     enable = true;

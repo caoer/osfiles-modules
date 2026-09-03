@@ -2,7 +2,8 @@
 # transport for `herdr --remote` (Mic92/herdr-eternal). Core module, usable
 # under NixOS and system-manager alike: options + the systemd unit, nothing
 # else. herdr-eternal.nixos.nix wraps it with the package default and the
-# firewall rule. Mirror of osfiles modules/foreign/herdr-eternal.nix.
+# firewall rule; system-manager hosts import this file by path
+# ("''${osf-modules}/modules/herdr-eternal/core.nix").
 #
 # The mac (osfiles hosts/zmax) runs `herdr-eternal-ssh` as herdr's
 # `[remote].ssh_command`; a target declared in its ~/.config/herdr-eternal/
