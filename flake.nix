@@ -51,6 +51,14 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # herdr-eternal — resumable transport for `herdr --remote` (WebSocket,
+    # byte-exact resume across sleep and roaming). Member nodes run its server
+    # via nixosModules.herdr-eternal; the mac's client lives in osfiles.
+    herdr-eternal = {
+      url = "github:Mic92/herdr-eternal";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # NixVim (cnixvim) — thin wrapper over caoer/nixvim (khanelivim fork).
     # Do NOT follow nixpkgs — cnixvim lets khanelivim use its own nixpkgs.
     cnixvim.url = "github:caoer/cnixvim";
@@ -143,10 +151,16 @@
         osf-tailscale = import ./modules/net/tailscale.nix;
         osf-gateway = import ./modules/net/gateway;
 
-        # Default: member-base + agent NixOS modules (ucc, paseo).
+        # herdr-eternal-server for `herdr --remote` (osf.herdrEternal.*).
+        herdr-eternal = import ./modules/herdr-eternal/herdr-eternal.nixos.nix {
+          herdrEternalFlake = inputs.herdr-eternal;
+        };
+
+        # Default: member-base + agent NixOS modules (ucc, paseo, herdr-eternal).
         default = import ./modules/_all-nixos.nix {
           paseoFlake = paseo;
           tmuxSrc = inputs.tmux-src;
+          herdrEternalFlake = inputs.herdr-eternal;
         };
       };
 
@@ -207,6 +221,8 @@
           # The fleet's tmux. Exposed so .woodpecker.yml can build the exact
           # derivation member-base installs and push it to cache.0xtau.com.
           tmux = pkgs.callPackage ./packages/tmux.nix { inherit (inputs) tmux-src; };
+          # herdr-eternal server + client, re-exported from upstream.
+          herdr-eternal = inputs.herdr-eternal.packages.${system}.default;
         }
         // nixpkgs.lib.optionalAttrs (inputs.hunk.packages ? ${system}) {
           # hunk — central fleet pin, re-exported straight from upstream (no

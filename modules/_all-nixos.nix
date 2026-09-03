@@ -1,7 +1,11 @@
 # modules/_all-nixos.nix — NixOS-level modules: member-base + agent profiles.
 # Golden base (disko, hardware, network, external-persist) is imported separately
 # via nixosModules.golden-base — it requires closed flake inputs.
-{ paseoFlake, tmuxSrc }:
+{
+  paseoFlake,
+  tmuxSrc,
+  herdrEternalFlake,
+}:
 { ... }:
 {
   imports = [
@@ -15,5 +19,6 @@
     ./sing-box-gateway/sing-box-gateway.nixos.nix
     ./ucc-singbox/ucc-singbox.nixos.nix
     ./moshi/moshi.nixos.nix
+    (import ./herdr-eternal/herdr-eternal.nixos.nix { inherit herdrEternalFlake; })
   ];
 }
