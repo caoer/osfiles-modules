@@ -67,11 +67,11 @@
         "nixvim": "nixvim"
       },
       "locked": {
-        "lastModified": 1788512593,
-        "narHash": "sha256-my2W3D2qc6kynwy2vFa9BuNZm32K6C2r+MhbugCNblc=",
+        "lastModified": 1788523339,
+        "narHash": "sha256-Y9QawGiQimC//lqdETo5z053ud7frcbw42FOAI9SNYk=",
         "owner": "caoer",
         "repo": "cvim",
-        "rev": "5e79c16d8fd2080a0582ca276e65c514b7c65ef8",
+        "rev": "1438431d378a3993a1031dcbf399e222a4cab775",
         "type": "github"
       },
       "original": {
