@@ -39,6 +39,16 @@ let
   # step (not home.file) is the only way to reach them; preset-bak mirrors the
   # locus backup. On NixOS hosts this stays null (the systemd unit owns the
   # deploy) — no double-apply.
+  #
+  # The nix file is the BASE, not the last word. The fleet settings POLICY —
+  # theme, tui, askUserQuestionTimeout, the permissions mode, the timeout env
+  # (ccc-statusd cmd/config/policy.go, mirrored by the installer's
+  # constants.mjs SETTINGS_FORCED) — is forced onto every profile by
+  # `ucc-cli update`, and a flat copy alone erases it again on each activation:
+  # Claude Code reads an absent `theme` as dark, so panes stop following the
+  # terminal after every rebuild. The daemon's own verb lays the policy back on
+  # top, the same per-profile call the installer makes (install-profiles.mjs,
+  # `config generate`); nix never carries a copy of the policy to rot.
   settingsFile = pkgs.writeText "claude-settings.json" (builtins.toJSON cfg.claudeSettings);
   claudeJsonPatch = builtins.toJSON {
     autoUpdates = false;
@@ -48,12 +58,18 @@ let
     set -euo pipefail
     profiles="${home}/.local/share/ucc/profiles"
     [ -d "$profiles" ] || { echo "ucc profiles dir absent — skipping settings deploy"; exit 0; }
+    statusd="${home}/.local/bin/ccc-statusd"
+    [ -x "$statusd" ] || echo "ccc-statusd absent — installer policy (theme, tui, …) not applied; run ucc-cli update"
     count=0
     for pf in "$profiles"/*/settings.json; do
       [ -f "$pf" ] || continue
       dir=$(dirname "$pf")
       cp "$pf" "$dir/settings.json.preset-bak" 2>/dev/null || true
       cp ${settingsFile} "$pf"
+      if [ -x "$statusd" ]; then
+        (cd "${home}" && CLAUDE_CONFIG_DIR="$dir" "$statusd" config generate >/dev/null) \
+          || echo "ccc-statusd config generate FAILED for $dir (non-fatal) — installer policy not applied"
+      fi
       # Merge keys into .claude.json, preserve the rest (create if missing).
       cj="$dir/.claude.json"
       if [ -f "$cj" ]; then

@@ -356,11 +356,23 @@ let
         echo "agent-claude-settings: no profiles yet (ucc not installed?) — nothing to do"
         exit 0
       fi
+      # The nix file is the BASE; the fleet settings POLICY (theme, tui,
+      # askUserQuestionTimeout, permissions mode, timeout env — ccc-statusd
+      # cmd/config/policy.go, mirrored by the installer's SETTINGS_FORCED) is
+      # laid back on top by the daemon's own verb, the same per-profile call
+      # the installer makes. A flat copy alone erases it on every rebuild, and
+      # Claude Code reads an absent `theme` as dark. Same shape as ucc.nix.
+      statusd="${home}/.local/bin/ccc-statusd"
+      [ -x "$statusd" ] || echo "agent-claude-settings: ccc-statusd absent — installer policy (theme, tui, …) not applied"
       count=0
       for dir in "$profiles"/*/; do
         [ -d "$dir" ] || continue
         cp "$dir/settings.json" "$dir/settings.json.agent-bak" 2>/dev/null || true
         install -m 0644 ${settingsFile} "$dir/settings.json"
+        if [ -x "$statusd" ]; then
+          (cd "${home}" && CLAUDE_CONFIG_DIR="$dir" "$statusd" config generate >/dev/null) \
+            || echo "agent-claude-settings: config generate FAILED for $dir (non-fatal) — installer policy not applied"
+        fi
         # Merge .claude.json keys in place — preserve the rest.
         cj="$dir/.claude.json"
         if [ -f "$cj" ]; then
@@ -372,6 +384,17 @@ let
       done
       echo "agent-claude-settings: synced $count profile(s)"
     '';
+
+  # Downloaded binaries (node, ccc-statusd) are dynamically linked; nix-ld
+  # resolves them through these two variables.
+  nixLdEnvironment = {
+    NIX_LD = "${pkgs.glibc}/lib/ld-linux-x86-64.so.2";
+    NIX_LD_LIBRARY_PATH = lib.makeLibraryPath [
+      pkgs.stdenv.cc.cc.lib
+      pkgs.glibc
+      pkgs.zlib
+    ];
+  };
 
   installerUnits = lib.mapAttrs' (
     name: ucfg:
@@ -399,14 +422,7 @@ let
         findutils
         git
       ];
-      environment = {
-        NIX_LD = "${pkgs.glibc}/lib/ld-linux-x86-64.so.2";
-        NIX_LD_LIBRARY_PATH = lib.makeLibraryPath [
-          pkgs.stdenv.cc.cc.lib
-          pkgs.glibc
-          pkgs.zlib
-        ];
-      };
+      environment = nixLdEnvironment;
       serviceConfig = {
         Type = "oneshot";
         User = name;
@@ -423,6 +439,8 @@ let
       after = [ "ucc-update-${name}.service" ];
       wants = [ "ucc-update-${name}.service" ];
       wantedBy = [ "multi-user.target" ];
+      # The sync script runs the downloaded ccc-statusd (dynamically linked).
+      environment = nixLdEnvironment;
       serviceConfig = {
         Type = "oneshot";
         User = name;
