@@ -1,7 +1,7 @@
 # modules/_all-hm.nix — single HM import for consumers.
 # Enables nothing by default — consumers toggle osf.<tool>.enable.
 {
-  cnixvimFlake,
+  cvimFlake,
   nixpkgsYazi,
   herdrFlake,
   hunkFlake,
@@ -12,6 +12,9 @@
     ./aliases/aliases.nix
     ./clipboard/clipboard.nix
     ./atuin/atuin.nix
+    (import ./cvim/cvim.nix {
+      cvimPackages = cvimFlake.packages.${pkgs.system};
+    })
     ./btop/btop.nix
     ./direnv/direnv.nix
     ./eza/eza.nix
@@ -21,9 +24,6 @@
       herdrPackages = herdrFlake.packages.${pkgs.system};
     })
     ./lazygit/lazygit.nix
-    (import ./nixvim/nixvim.nix {
-      cnixvimPackages = cnixvimFlake.packages.${pkgs.system};
-    })
     ./osf-theme/osf-theme.nix
     ./starship/starship.nix
     ./tmux/tmux.nix

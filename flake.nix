@@ -61,9 +61,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # NixVim (cnixvim) — thin wrapper over caoer/nixvim (khanelivim fork).
-    # Do NOT follow nixpkgs — cnixvim lets khanelivim use its own nixpkgs.
-    cnixvim.url = "github:caoer/cnixvim";
+    # cvim — the fleet's nvim distro (osf.cvim). The same flake the mac
+    # installs through `nix profile` and osfiles ships to every server tier,
+    # so one source builds the editor on every host.
+    # Do NOT follow nixpkgs — cvim rides nixvim's own nixpkgs.
+    cvim.url = "github:caoer/cvim";
 
     # tmux source — caoer/tmux fork master: upstream post-3.7b (the
     # PANE_REDRAW-on-?2026l image-erasing regression is removed there) plus
@@ -104,7 +106,7 @@
       self,
       nixpkgs,
       paseo,
-      cnixvim,
+      cvim,
       ...
     }:
     let
@@ -176,7 +178,7 @@
       # HM modules: all tool modules (opt-in via osf.<tool>.enable) + presets.
       homeManagerModules = {
         default = import ./modules/_all-hm.nix {
-          cnixvimFlake = cnixvim;
+          cvimFlake = cvim;
           nixpkgsYazi = inputs.nixpkgs-yazi;
           herdrFlake = inputs.herdr;
           hunkFlake = inputs.hunk;
