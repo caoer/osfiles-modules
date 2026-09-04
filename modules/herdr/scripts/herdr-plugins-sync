@@ -17,7 +17,7 @@
 set -eu
 
 # id|owner/repo|commit
-PLUGINS="ccc-herdr|caoer/ccc-herdr|69799e4f93f8289831d2bb95d7813ecfb35529c2
+PLUGINS="ccc-herdr|caoer/ccc-herdr|7b8c84654c092b00f13aaa8f936da7307a8a601d
 ccc-layout|caoer/ccc-herdr-layout|4637d113b3e1003b08242c02e1bd50f0fc58428e
 jhochenbaum.hunkdiff|jhochenbaum/herdr-hunk-diff|6810ab31b34ec28eb302603846bc4339e7063655
 official.browser|ogulcancelik/herdr-browser|be6888b71cf4eb5939ee79a746bd1a1c22ade046"
