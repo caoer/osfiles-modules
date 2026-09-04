@@ -108,6 +108,64 @@ in
   # foreign.secrets on Foreign), so this builder is platform-neutral.
   installerBaseUrl = "https://get-ucc.sui.pics/installer";
 
+  # The one settings.json writer for both module paths (the
+  # agent-claude-settings-<user> unit in ucc.nixos.nix, the HM activation in
+  # ucc.nix): merge the nix-declared OVERRIDES onto each profile's file, then
+  # let the daemon lay its policy back on top.
+  #
+  # The profile's file is the base — it is what `ucc-cli update` wrote — and
+  # nix contributes only the keys it declares (objects merge key by key, arrays
+  # replace). Never declare a key the installer owns: the fleet settings POLICY
+  # (theme, tui, askUserQuestionTimeout, the permissions mode, the timeout env
+  # — ccc-statusd cmd/config/policy.go, mirrored by the installer's
+  # SETTINGS_FORCED), `hooks` and `statusLine`. Such a key would be set by the
+  # installer, set back here, and flip on alternating runs. The daemon's own
+  # verb — `config generate`, the same per-profile call the installer makes —
+  # runs after the merge, so a conflicting key can only ever lose, and on any
+  # event a nix-declared registrar (moshi) names, the daemon's entry comes back
+  # in front of it. A missing or failing daemon is reported and non-fatal.
+  mkSettingsSyncScript =
+    {
+      name,
+      home,
+      settingsFile,
+    }:
+    let
+      claudeJsonPatch = builtins.toJSON {
+        autoUpdates = false;
+        autoCompactEnabled = false;
+      };
+    in
+    pkgs.writeShellScript "ucc-settings-sync-${name}" ''
+      set -euo pipefail
+      profiles="${home}/.local/share/ucc/profiles"
+      if [ ! -d "$profiles" ]; then
+        echo "ucc-settings-sync: no profiles yet (ucc not installed?) — nothing to do"
+        exit 0
+      fi
+      statusd="${home}/.local/bin/ccc-statusd"
+      [ -x "$statusd" ] || echo "ucc-settings-sync: ccc-statusd absent — installer policy (theme, tui, …) not applied; run ucc-cli update"
+      count=0
+      for pf in "$profiles"/*/settings.json; do
+        [ -f "$pf" ] || continue
+        dir=$(dirname "$pf")
+        ${pkgs.jq}/bin/jq -s '.[0] * .[1]' "$pf" ${settingsFile} > "$pf.tmp" && mv "$pf.tmp" "$pf"
+        if [ -x "$statusd" ]; then
+          (cd "${home}" && CLAUDE_CONFIG_DIR="$dir" "$statusd" config generate >/dev/null) \
+            || echo "ucc-settings-sync: config generate FAILED for $dir (non-fatal) — installer policy not applied"
+        fi
+        # Merge the .claude.json patch in place — preserve the rest (mcpServers, oauth, …).
+        cj="$dir/.claude.json"
+        if [ -f "$cj" ]; then
+          ${pkgs.jq}/bin/jq '. * ${claudeJsonPatch}' "$cj" > "$cj.tmp" && mv "$cj.tmp" "$cj"
+        else
+          echo '${claudeJsonPatch}' > "$cj"
+        fi
+        count=$((count + 1))
+      done
+      echo "ucc-settings-sync: ${name}: $count profile(s)"
+    '';
+
   mkInstallerScript =
     {
       name,

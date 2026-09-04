@@ -27,60 +27,24 @@
 let
   cfg = config.osf.ucc;
   home = config.home.homeDirectory;
+  agentLib = import ./lib.nix { inherit pkgs; };
 
   sourceType = lib.types.nullOr (lib.types.either lib.types.path lib.types.str);
   resolve = src: if builtins.isString src then config.lib.file.mkOutOfStoreSymlink src else src;
 
-  # Claude settings.json deploy (osf.ucc.claudeSettings) — the Foreign /
+  # Claude settings.json overrides (osf.ucc.claudeSettings) — the Foreign /
   # HM-standalone analogue of the NixOS path's agent-claude-settings-<user>
-  # systemd unit (ucc.nixos.nix) and of locus `just preset`: write one settings.json
-  # into every ucc profile + merge a small .claude.json patch. Profiles are
-  # created by the ucc installer at runtime, so a glob-loop in an activation
-  # step (not home.file) is the only way to reach them; preset-bak mirrors the
-  # locus backup. On NixOS hosts this stays null (the systemd unit owns the
-  # deploy) — no double-apply.
-  #
-  # The nix file is the BASE, not the last word. The fleet settings POLICY —
-  # theme, tui, askUserQuestionTimeout, the permissions mode, the timeout env
-  # (ccc-statusd cmd/config/policy.go, mirrored by the installer's
-  # constants.mjs SETTINGS_FORCED) — is forced onto every profile by
-  # `ucc-cli update`, and a flat copy alone erases it again on each activation:
-  # Claude Code reads an absent `theme` as dark, so panes stop following the
-  # terminal after every rebuild. The daemon's own verb lays the policy back on
-  # top, the same per-profile call the installer makes (install-profiles.mjs,
-  # `config generate`); nix never carries a copy of the policy to rot.
+  # systemd unit (ucc.nixos.nix). Profiles are created by the ucc installer at
+  # runtime, so a glob-loop in an activation step (not home.file) is the only
+  # way to reach them. On NixOS hosts this stays null (the systemd unit owns
+  # the deploy) — no double-apply. The writer — merge the overrides onto each
+  # profile's file, then the daemon's policy on top — and the rule about which
+  # keys may be declared: lib.nix mkSettingsSyncScript.
   settingsFile = pkgs.writeText "claude-settings.json" (builtins.toJSON cfg.claudeSettings);
-  claudeJsonPatch = builtins.toJSON {
-    autoUpdates = false;
-    autoCompactEnabled = false;
+  applyClaudeSettings = agentLib.mkSettingsSyncScript {
+    name = config.home.username;
+    inherit home settingsFile;
   };
-  applyClaudeSettings = pkgs.writeShellScript "apply-claude-settings" ''
-    set -euo pipefail
-    profiles="${home}/.local/share/ucc/profiles"
-    [ -d "$profiles" ] || { echo "ucc profiles dir absent — skipping settings deploy"; exit 0; }
-    statusd="${home}/.local/bin/ccc-statusd"
-    [ -x "$statusd" ] || echo "ccc-statusd absent — installer policy (theme, tui, …) not applied; run ucc-cli update"
-    count=0
-    for pf in "$profiles"/*/settings.json; do
-      [ -f "$pf" ] || continue
-      dir=$(dirname "$pf")
-      cp "$pf" "$dir/settings.json.preset-bak" 2>/dev/null || true
-      cp ${settingsFile} "$pf"
-      if [ -x "$statusd" ]; then
-        (cd "${home}" && CLAUDE_CONFIG_DIR="$dir" "$statusd" config generate >/dev/null) \
-          || echo "ccc-statusd config generate FAILED for $dir (non-fatal) — installer policy not applied"
-      fi
-      # Merge keys into .claude.json, preserve the rest (create if missing).
-      cj="$dir/.claude.json"
-      if [ -f "$cj" ]; then
-        ${pkgs.jq}/bin/jq '. * ${claudeJsonPatch}' "$cj" > "$cj.tmp" && mv "$cj.tmp" "$cj"
-      else
-        echo '${claudeJsonPatch}' > "$cj"
-      fi
-      count=$((count + 1))
-    done
-    echo "claude settings: applied to $count profile(s)"
-  '';
 
   # Re-assert herdr's OWN SessionStart reporter after the settings deploy.
   #
@@ -189,11 +153,16 @@ in
       type = lib.types.nullOr lib.types.attrs;
       default = null;
       description = ''
-        Claude Code settings.json content (attrset). When set, an HM activation
-        applies it to every ~/.local/share/ucc/profiles/*/settings.json (backing
-        the prior file up to settings.json.preset-bak) and merges
+        Claude Code settings.json OVERRIDES (attrset): the keys nix adds on top
+        of what the ucc installer writes. When set, an HM activation deep-merges
+        it onto every ~/.local/share/ucc/profiles/*/settings.json, runs the
+        daemon's `config generate` so the fleet policy stays on top, and merges
         {autoUpdates, autoCompactEnabled} = false into each profile's
-        .claude.json. The Foreign / HM-standalone analogue of the NixOS path's
+        .claude.json. Never declare a key the installer forces (theme, tui,
+        askUserQuestionTimeout, permissions mode, timeout env) nor `hooks` /
+        `statusLine` — those flip on alternating runs. A hooks event named here
+        (moshi) replaces that event's array; the daemon puts its own entry back
+        in front. The Foreign / HM-standalone analogue of the NixOS path's
         agent-claude-settings-<user> systemd unit (which owns this deploy on
         NixOS hosts — leave this null there to avoid a double-apply). The ucc
         installer creates profiles at runtime, so this runs on each HM switch

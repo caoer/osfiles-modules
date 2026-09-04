@@ -128,10 +128,13 @@ let
         default = { };
         description = ''
           Per-user overrides recursively merged over the module's base
-          Claude Code settings.json (hooks, statusline, model, env —
-          see baseClaudeSettings). The merged result is synced
-          into every UCC profile's settings.json by
-          agent-claude-settings-<user>.
+          overrides (baseClaudeSettings: model, effort, plugins, moshi hooks).
+          agent-claude-settings-<user> deep-merges the result onto every UCC
+          profile's settings.json and then runs the daemon's `config generate`,
+          so the installer's policy stays on top. Never declare a key the
+          installer forces (theme, tui, askUserQuestionTimeout, permissions
+          mode, timeout env) nor `hooks` / `statusLine` — those flip on
+          alternating runs (lib.nix mkSettingsSyncScript).
         '';
       };
       codex.enable = lib.mkOption {
@@ -181,26 +184,9 @@ let
     };
   });
 
-  # --- Claude Code profile settings (mirrors locus presets.nix baseSettings) ---
-  statusdHook =
-    localBin:
-    {
-      matcher ? "",
-      timeout ? null,
-    }:
-    let
-      hookBase = {
-        type = "command";
-        command = "${localBin}/ccc-statusd hook";
-      };
-      hookEntry = if timeout != null then hookBase // { inherit timeout; } else hookBase;
-    in
-    [
-      {
-        inherit matcher;
-        hooks = [ hookEntry ];
-      }
-    ];
+  # --- Claude Code profile settings: the OVERRIDES nix adds on top of what the
+  # installer writes. The policy, the daemon's hooks and statusLine are the
+  # installer's (lib.nix mkSettingsSyncScript). ---
 
   # One Moshi hook entry. This mirrors, field for field, what `moshi-hook
   # install --target claude` writes — captured by running the vendor installer
@@ -232,54 +218,12 @@ let
   baseClaudeSettings =
     name: ucfg:
     let
-      home = homeOf name;
-      localBin = "${home}/.local/bin";
-      uccData = "${home}/.local/share/ucc";
-      hook = statusdHook localBin;
-      # No-op when moshi is off, so every `++ mhook {...}` below collapses away.
-      mhook = if ucfg.moshi.enable then moshiHook (lib.getExe ucfg.moshi.package) else (_: [ ]);
+      uccData = "${homeOf name}/.local/share/ucc";
+      mhook = moshiHook (lib.getExe ucfg.moshi.package);
     in
     {
-      cleanupPeriodDays = 9999;
       env = {
-        BASH_MAX_TIMEOUT_MS = "60000";
-        CCC_STOP_IGNORE_HOOK_ACTIVE = "6";
-        CCC_TOOL_USE_ALLOW_ALL = "1";
-        CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL = "1";
         CLAUDE_CODE_SCROLL_SPEED = "10";
-        DISABLE_TELEMETRY = "1";
-      };
-      attribution = {
-        commit = "";
-        pr = "";
-      };
-      permissions = {
-        defaultMode = "default";
-        deny = [ ];
-      };
-      hooks = {
-        Notification = hook { };
-        # The one event where both systems overlap on purpose. ccc-statusd
-        # excludes AskUserQuestion (it has its own AUQ relay); moshi wants
-        # every permission request, unmatched and synchronous, because that is
-        # how the phone answers a question. Both entries run.
-        PermissionRequest = hook { matcher = "^(?!AskUserQuestion$)"; } ++ mhook { async = false; };
-        PostToolUse = hook { } ++ mhook { matcher = "AskUserQuestion"; } ++ mhook { matcher = "ExitPlanMode"; };
-        PreToolUse = hook { } ++ mhook { matcher = "AskUserQuestion"; } ++ mhook { matcher = "ExitPlanMode"; };
-        Stop = hook { timeout = 3600; } ++ mhook { };
-        SubagentStart = hook { };
-        SubagentStop = hook { timeout = 3600; };
-        UserPromptSubmit = hook { } ++ mhook { };
-      }
-      # Moshi-only events — ccc-statusd binds neither, so these keys appear
-      # only when moshi is enabled rather than shipping empty arrays.
-      // lib.optionalAttrs ucfg.moshi.enable {
-        SessionStart = mhook { };
-        SessionEnd = mhook { };
-      };
-      statusLine = {
-        type = "command";
-        command = "${localBin}/ccc-statusd statusline";
       };
       enabledPlugins = {
         "agent-skills@addy-agent-skills" = false;
@@ -300,32 +244,31 @@ let
           };
         };
       };
-      spinnerTipsEnabled = false;
-      alwaysThinkingEnabled = true;
       autoMemoryEnabled = true;
-      autoMemoryDirectory = "${uccData}/memory";
-      showThinkingSummaries = true;
-      skipDangerousModePermissionPrompt = true;
-      skipAutoPermissionPrompt = true;
-      autoMode = {
-        allow = [ "Allow all actions without restriction" ];
-      };
-      claudeInChromeDefaultEnabled = false;
       effortLevel = "xhigh";
-      lspRecommendationDisabled = true;
-      officialMarketplaceAutoInstallAttempted = true;
-      officialMarketplaceAutoInstalled = false;
-      tui = "fullscreen";
       verbose = false;
       model = "claude-opus-4-8[1m]";
       enableWorkflows = false;
       workflowKeywordTriggerEnabled = false;
+    }
+    # Moshi is the one registrar with no per-profile installer of its own
+    # (`moshi-hook install` reaches only ~/.claude/settings.json), so its
+    # entries are declared here, on the events it consumes. Each named event's
+    # array is replaced by these entries; the daemon's `config generate` then
+    # puts its own entry back in front. On PermissionRequest that order is the
+    # point: ccc-statusd answers first (CCC_TOOL_USE_ALLOW_ALL auto-approve),
+    # moshi's synchronous entry carries the phone's decision after it.
+    // lib.optionalAttrs ucfg.moshi.enable {
+      hooks = {
+        PermissionRequest = mhook { async = false; };
+        PostToolUse = mhook { matcher = "AskUserQuestion"; } ++ mhook { matcher = "ExitPlanMode"; };
+        PreToolUse = mhook { matcher = "AskUserQuestion"; } ++ mhook { matcher = "ExitPlanMode"; };
+        Stop = mhook { };
+        UserPromptSubmit = mhook { };
+        SessionStart = mhook { };
+        SessionEnd = mhook { };
+      };
     };
-
-  claudeJsonPatch = builtins.toJSON {
-    autoUpdates = false;
-    autoCompactEnabled = false;
-  };
 
   # --- UCC installer — shared builder (modules/ucc/lib.nix). The NixOS and
   # Foreign paths run identical logic; only secret wiring differs (sops-nix
@@ -340,50 +283,17 @@ let
       passwordSecretPath = config.sops.secrets.${ucfg.encryptionPasswordSecret}.path;
     };
 
-  # --- settings sync (preset-activate pattern: copy to every profile) ---
+  # --- settings sync: the overrides onto every profile, the daemon's policy on
+  # top (lib.nix mkSettingsSyncScript) ---
   mkSettingsSyncScript =
     name: ucfg:
-    let
+    agentLib.mkSettingsSyncScript {
+      inherit name;
       home = homeOf name;
       settingsFile = pkgs.writeText "agent-claude-settings-${name}.json" (
         builtins.toJSON (lib.recursiveUpdate (baseClaudeSettings name ucfg) ucfg.claudeSettings)
       );
-    in
-    pkgs.writeShellScript "agent-claude-settings-${name}" ''
-      set -euo pipefail
-      profiles="${home}/.local/share/ucc/profiles"
-      if [ ! -d "$profiles" ]; then
-        echo "agent-claude-settings: no profiles yet (ucc not installed?) — nothing to do"
-        exit 0
-      fi
-      # The nix file is the BASE; the fleet settings POLICY (theme, tui,
-      # askUserQuestionTimeout, permissions mode, timeout env — ccc-statusd
-      # cmd/config/policy.go, mirrored by the installer's SETTINGS_FORCED) is
-      # laid back on top by the daemon's own verb, the same per-profile call
-      # the installer makes. A flat copy alone erases it on every rebuild, and
-      # Claude Code reads an absent `theme` as dark. Same shape as ucc.nix.
-      statusd="${home}/.local/bin/ccc-statusd"
-      [ -x "$statusd" ] || echo "agent-claude-settings: ccc-statusd absent — installer policy (theme, tui, …) not applied"
-      count=0
-      for dir in "$profiles"/*/; do
-        [ -d "$dir" ] || continue
-        cp "$dir/settings.json" "$dir/settings.json.agent-bak" 2>/dev/null || true
-        install -m 0644 ${settingsFile} "$dir/settings.json"
-        if [ -x "$statusd" ]; then
-          (cd "${home}" && CLAUDE_CONFIG_DIR="$dir" "$statusd" config generate >/dev/null) \
-            || echo "agent-claude-settings: config generate FAILED for $dir (non-fatal) — installer policy not applied"
-        fi
-        # Merge .claude.json keys in place — preserve the rest.
-        cj="$dir/.claude.json"
-        if [ -f "$cj" ]; then
-          ${pkgs.jq}/bin/jq '. * ${claudeJsonPatch}' "$cj" > "$cj.tmp" && mv "$cj.tmp" "$cj"
-        else
-          echo '${claudeJsonPatch}' > "$cj"
-        fi
-        count=$((count + 1))
-      done
-      echo "agent-claude-settings: synced $count profile(s)"
-    '';
+    };
 
   # Downloaded binaries (node, ccc-statusd) are dynamically linked; nix-ld
   # resolves them through these two variables.
