@@ -29,9 +29,26 @@
 }:
 let
   cfg = config.osf.moshi;
+  tomlFormat = pkgs.formats.toml { };
 
   userOpts = lib.types.submodule (_: {
     options = {
+      settings = lib.mkOption {
+        type = tomlFormat.type;
+        default = { };
+        example = {
+          always_on_discovery = false;
+          scan_ports = "none";
+        };
+        description = ''
+          Keys of the `[gateway]` table in ~/.config/moshi/config.toml — the
+          daemon's own settings (`moshi-hook set` lists them). Merged over the
+          fleet default below, which turns `usage_collection` off: on, the
+          daemon polls every agent's rate limits every minute and uploads them
+          to Moshi's cloud. The file is a store symlink, so `moshi-hook set`
+          cannot write it — change values here. A change restarts the daemon.
+        '';
+      };
       gatewayListen = lib.mkOption {
         type = lib.types.str;
         default = "127.0.0.1:24543";
@@ -143,13 +160,27 @@ in
       export MOSHI_SOCKET_PATH="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/moshi-hook.sock"
     '';
 
-    home-manager.users = lib.mapAttrs (name: ucfg: {
-      systemd.user.services.moshi-hook = {
-        Unit = {
-          Description = "Moshi host daemon for ${name} (hook socket + cloud bridge + diff gateway)";
-          After = [ "network-online.target" ];
-          Wants = [ "network-online.target" ];
+    home-manager.users = lib.mapAttrs (
+      name: ucfg:
+      let
+        configFile = tomlFormat.generate "moshi-config.toml" {
+          gateway = {
+            usage_collection = false;
+          }
+          // ucfg.settings;
         };
+      in
+      {
+        xdg.configFile."moshi/config.toml".source = configFile;
+
+        systemd.user.services.moshi-hook = {
+          Unit = {
+            Description = "Moshi host daemon for ${name} (hook socket + cloud bridge + diff gateway)";
+            After = [ "network-online.target" ];
+            Wants = [ "network-online.target" ];
+            # Booleans in config.toml are read once at start.
+            X-Restart-Triggers = [ "${configFile}" ];
+          };
 
         Service = {
           ExecStart = "${lib.getExe cfg.package} serve --gateway-listen ${ucfg.gatewayListen}";
