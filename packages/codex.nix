@@ -8,12 +8,12 @@
 }:
 
 let
-  version = "0.153.3";
+  version = "0.153.4";
 
   assets = {
     "x86_64-linux" = {
       target = "x86_64-unknown-linux-musl";
-      sha256 = "1flcyixfvd40wzhygg9yqmd6xjxkxa48gg284x67650fn15ngybg";
+      sha256 = "0c2ah46q14z465hms13098il1k7l8j6f4ynq83f88909r9744ygl";
     };
   };
 
