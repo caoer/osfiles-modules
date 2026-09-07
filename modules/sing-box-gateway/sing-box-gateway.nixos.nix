@@ -58,6 +58,7 @@ let
     {
       inherit (cfg)
         outboundGroups
+        proxySelectDefault
         finalOutbound
         shadowtlsDefaults
         extraOutbounds
@@ -241,6 +242,13 @@ in
         password = "";
       };
       description = "Default ShadowTLS parameters for `shadowtls = true` entries.";
+    };
+
+    proxySelectDefault = mkOption {
+      type = types.str;
+      default = "urltest-all";
+      example = "cfip";
+      description = "Member proxy-select starts on: \"urltest-all\" or a main-pool group tag.";
     };
 
     finalOutbound = mkOption {

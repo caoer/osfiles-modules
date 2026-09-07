@@ -397,6 +397,18 @@ in
           description = "Extra DNS rules inserted before the tun-in catch-all.";
         };
 
+        proxySelectDefault = mkOption {
+          type = types.str;
+          default = "urltest-all";
+          example = "cfip";
+          description = ''
+            Member proxy-select starts on: "urltest-all" or the tag of a
+            main-pool outbound group. A group name here is a hard preference
+            (no automatic fallback to the other groups) that the Clash
+            dashboard can still flip by hand.
+          '';
+        };
+
         finalOutbound = mkOption {
           type = types.str;
           default = "proxy-select";

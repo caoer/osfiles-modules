@@ -65,6 +65,12 @@
   urltestUrl ? "https://www.gstatic.com/generate_204",
   urltestInterval ? "5m",
 
+  # ── proxy-select default ──────────────────────────────────────────
+  # The member proxy-select starts on: "urltest-all" (fastest main-pool
+  # group wins) or one main-pool group's tag — a deliberate preference the
+  # dashboard can still flip. Must name a proxy-select member.
+  proxySelectDefault ? "urltest-all",
+
   # ── TUN configuration ─────────────────────────────────────────────
   interface_name ? "tun-gw",
   # Accepts a string (single address) or a list (e.g. [ipv4 ipv6]).
@@ -351,11 +357,20 @@ let
     interval = urltestInterval;
   };
 
+  selectorMembers = [ "urltest-all" ] ++ mainPoolMembers ++ [ "direct" ];
+
   selectorOutbound = {
     type = "selector";
     tag = "proxy-select";
-    outbounds = [ "urltest-all" ] ++ mainPoolMembers ++ [ "direct" ];
-    default = "urltest-all";
+    outbounds = selectorMembers;
+    default =
+      if lib.elem proxySelectDefault selectorMembers then
+        proxySelectDefault
+      else
+        throw ''
+          singbox-config-generator: proxySelectDefault "${proxySelectDefault}" is not a
+          proxy-select member (${lib.concatStringsSep ", " selectorMembers}).
+        '';
   };
 
   allOutbounds =

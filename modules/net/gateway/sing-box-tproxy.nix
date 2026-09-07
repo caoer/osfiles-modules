@@ -158,7 +158,7 @@ lib.mkIf (cfg.enable && ecfg.enable && tp.enable) {
       extraRules = tp.dnsRules;
     };
 
-    inherit (tp) finalOutbound;
+    inherit (tp) proxySelectDefault finalOutbound;
     inherit (tp) sourceSubnets;
 
     clashApi = lib.mkIf clashOn {
