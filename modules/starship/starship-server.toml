@@ -84,12 +84,15 @@ command = '''
 rel_path=$(git rev-parse --show-prefix 2>/dev/null | sed 's|/$||')
 [ -n "$rel_path" ] && echo "$rel_path"
 '''
+# require_repo: skip entirely (no sh/git spawn) outside git repos.
+require_repo = true
 when = '[ -n "$TMUX" ]'
 style = "cyan bold"
 format = "[$output ]($style)"
 
 [custom.git_branch]
 command = 'git symbolic-ref --short HEAD 2>/dev/null || git describe --tags --exact-match 2>/dev/null || git rev-parse --short HEAD 2>/dev/null'
+require_repo = true
 when = '[ -z "$TMUX" ]'
 style = "bold purple"
 format = "[$symbol($output )]($style)"
