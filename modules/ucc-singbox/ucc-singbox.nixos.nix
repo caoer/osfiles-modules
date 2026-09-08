@@ -103,7 +103,13 @@ let
     #   <own-ip>:<redirect-port>. A `bypass` action hands that back to the
     #   listener through `direct`, a self-feeding hairpin that pegs CPU;
     #   `reject` closes the connection instead. The redirectGuard unit below
-    #   drops the seed traffic at the packet layer.
+    #   drops the seed traffic at the packet layer — except on lo, which it
+    #   admits: a local probe of the port (or the dual-stack listener reached
+    #   on ::1) reads as dest 127.0.0.1:<redirect-port> and seeds the same
+    #   hairpin (xu-lax: 16k self-connections/min, 3 cores). Loopback is
+    #   rejected as well: nothing legitimate reaches the router with a
+    #   loopback destination — the output REDIRECT chain returns for the
+    #   local address set, and loopback never routes through the tun.
     # - Exclude docker/br-/veth from auto_route so published containers
     #   don't enter the TUN.
     # - tun-us: force strict_route=false. API default true blackholes
@@ -140,18 +146,16 @@ let
               then .exclude_interface = (((.exclude_interface // []) + $ex_if) | unique)
               else . end
           )
-        | if ($ex_addr | length) > 0 then
-            .route.rules = (
-              [
-                { action: "sniff" },
-                { action: "hijack-dns", protocol: "dns" },
-                { action: "reject", ip_cidr: $ex_addr }
-              ]
-              + ((.route.rules // []) | map(select(
-                  .action != "sniff" and .action != "hijack-dns"
-                )))
-            )
-          else . end
+        | .route.rules = (
+            [
+              { action: "sniff" },
+              { action: "hijack-dns", protocol: "dns" },
+              { action: "reject", ip_cidr: ($ex_addr + ["127.0.0.0/8", "::1/128"]) }
+            ]
+            + ((.route.rules // []) | map(select(
+                .action != "sniff" and .action != "hijack-dns"
+              )))
+          )
       ' > ${runtimeConfig}
     echo "${serviceName}: tun exclude addrs=$(echo "$host_cidrs" | tr '\n' ' ')"
 
