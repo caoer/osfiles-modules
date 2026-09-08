@@ -11,12 +11,11 @@
 # (dark) hexes: on the light background (#e1e2e7) the teal descriptions
 # measured 1.15:1 and the pink keys 1.79:1 — illegible.
 #
-# The fix is the same convention config/tmux/themes/light/*.conf states — name
-# the ROLE and let the terminal resolve it. wezterm swaps the 16-color ANSI
-# palette per macOS appearance and tmux rides the twin palette
-# (config/wezterm/common.lua theme_families), so ANSI-named colors here make
-# yazi follow BOTH axes for free: every appearance AND all 14 families the
-# picker offers. Hexes could only ever track one family in one appearance.
+# The fix: name the ROLE and let the terminal resolve it. A terminal that
+# swaps its 16-color ANSI palette per appearance (wezterm does, per macOS
+# appearance, with tmux riding the twin palette) makes ANSI-named colors here
+# follow BOTH axes for free: every appearance AND every theme family the
+# terminal offers. Hexes could only ever track one family in one appearance.
 #
 #   ANSI name   dark = Tokyo Night      light = Tokyo Night Day
 #   ---------   --------------------    -----------------------

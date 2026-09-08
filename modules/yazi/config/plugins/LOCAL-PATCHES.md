@@ -73,8 +73,8 @@ than the upstream hexes, for the reason given in `../theme.toml`.
 Edit the vendored plugin in place, then capture the change with `--relative`,
 which emits the `a/main.lua` paths `apply.sh` expects:
 
-    git -C config/yazi/plugins/duckdb.yazi diff --relative --no-ext-diff \
-      > config/yazi/plugins/patches/duckdb.yazi/004-slug.diff
+    git -C plugins/duckdb.yazi diff --relative --no-ext-diff \
+      > plugins/patches/duckdb.yazi/004-slug.diff
 
 Number it after the existing patches so it applies last, on top of them.
 

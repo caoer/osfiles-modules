@@ -6,7 +6,7 @@
 # restores pristine upstream first. This puts the patches back:
 #
 #     ya pkg upgrade --discard wylie102/duckdb
-#     config/yazi/plugins/patches/apply.sh
+#     plugins/patches/apply.sh
 #     git diff
 #
 # Patches apply in filename order, and each was generated against the state its
@@ -48,18 +48,25 @@ for dir in "$here"/*/; do
 	# the next checkout — leave them writable instead.
 	[ "$mode" = apply ] && chmod -R u+w "$target"
 
+	# Inside a repository `git apply` resolves patch paths against the repo
+	# top and silently SKIPS (exit 0) any that fall outside the cwd, so a
+	# `main.lua` patch checked from plugins/<x>.yazi/ never touches a file and
+	# reads as WOULD forever. Prefix the target's path from the top so the
+	# same patch resolves correctly in a checkout and in a plain directory.
+	prefix=$(git -C "$target" rev-parse --show-prefix 2>/dev/null || true)
+
 	for patch in "$dir"*.diff; do
 		[ -e "$patch" ] || continue
 		name="$plugin/$(basename -- "$patch")"
 
-		if git -C "$target" apply --check -p1 "$patch" 2>/dev/null; then
+		if git -C "$target" apply --check -p1 --directory="$prefix" "$patch" 2>/dev/null; then
 			if [ "$mode" = check ]; then
 				echo "WOULD    $name"
 			else
-				git -C "$target" apply -p1 "$patch"
+				git -C "$target" apply -p1 --directory="$prefix" "$patch"
 				echo "APPLIED  $name"
 			fi
-		elif git -C "$target" apply --check -p1 --reverse "$patch" 2>/dev/null; then
+		elif git -C "$target" apply --check -p1 --directory="$prefix" --reverse "$patch" 2>/dev/null; then
 			echo "PRESENT  $name"
 		else
 			echo "FAILED   $name — upstream moved under it, re-derive" >&2

@@ -1,3 +1,4 @@
+diff --git a/main.lua b/main.lua
 --- a/main.lua
 +++ b/main.lua
 @@ -114,7 +114,10 @@

@@ -1,93 +1,11 @@
--- Layout cycle: Tab cycles modes, resize snaps back to responsive
-local layout_cycle = require("layout-cycle")
+-- Layout cycle: Tab cycles modes (responsive → preview → list), resize snaps
+-- back to responsive. The Tab:layout override lives in the plugin's setup().
+require("layout-cycle"):setup()
 
-function Tab:layout()
-	-- Dual-compat ratio access: nightly indexes the tuple (named fields fire a
-	-- per-frame deprecation), stable serializes named fields ([1] is nil there).
-	local ratio = rt.mgr.ratio
-	local par = ratio[1] or ratio.parent
-	local cur = ratio[2] or ratio.current
-	local pre = ratio[3] or ratio.preview
-	local all = par + cur + pre
-	local w = self._area.w
-
-	-- Reset to responsive on terminal resize
-	if w ~= layout_cycle.last_width then
-		layout_cycle.mode = "responsive"
-		layout_cycle.last_width = w
-	end
-
-	local mode = layout_cycle.mode
-
-	if mode == "preview" then
-		-- Skinny file list + big preview
-		self._chunks = ui.Layout()
-			:direction(ui.Layout.HORIZONTAL)
-			:constraints({
-				ui.Constraint.Ratio(0, all),
-				ui.Constraint.Ratio(2, all),
-				ui.Constraint.Ratio(all - 2, all),
-			})
-			:split(self._area)
-	elseif mode == "list" then
-		-- Wide file list, no preview
-		self._chunks = ui.Layout()
-			:direction(ui.Layout.HORIZONTAL)
-			:constraints({
-				ui.Constraint.Ratio(par, all),
-				ui.Constraint.Ratio(cur + pre, all),
-				ui.Constraint.Ratio(0, all),
-			})
-			:split(self._area)
-	elseif w > 100 then
-		-- Responsive: full 3-column
-		self._chunks = ui.Layout()
-			:direction(ui.Layout.HORIZONTAL)
-			:constraints({
-				ui.Constraint.Ratio(par, all),
-				ui.Constraint.Ratio(cur, all),
-				ui.Constraint.Ratio(pre, all),
-			})
-			:split(self._area)
-	elseif w > 60 then
-		-- Responsive: hide parent
-		self._chunks = ui.Layout()
-			:direction(ui.Layout.HORIZONTAL)
-			:constraints({
-				ui.Constraint.Ratio(0, all),
-				ui.Constraint.Ratio(cur + par, all),
-				ui.Constraint.Ratio(pre, all),
-			})
-			:split(self._area)
-	else
-		-- Responsive: single column
-		self._chunks = ui.Layout()
-			:direction(ui.Layout.HORIZONTAL)
-			:constraints({
-				ui.Constraint.Ratio(0, all),
-				ui.Constraint.Ratio(all, all),
-				ui.Constraint.Ratio(0, all),
-			})
-			:split(self._area)
-	end
-end
-
--- Folder file-count linemode (files show size).
--- Directory counts are computed off the render thread by the `count` plugin's
--- async fetcher and cached in `count.counts`; here we only read that cache, so
--- rendering never does directory I/O. Counting synchronously here froze the
--- file list on huge trees (e.g. /Users/Shared/projects).
-local count = require("count")
-function Linemode:count()
-	local file = self._file
-	if not file.cha.is_dir then
-		local size = file:size()
-		return size and ya.readable_size(size) or ""
-	end
-
-	local n = count.counts[tostring(file.url)]
-	return (n and n >= 0) and tostring(n) or ""
-end
+-- Folder file-count linemode (files show size). Counts are computed off the
+-- render thread by the plugin's async fetcher; the linemode installed by
+-- setup() only reads the cache, so rendering never does directory I/O.
+require("count"):setup()
 
 -- DuckDB plugin configuration
 require("duckdb"):setup()
@@ -109,10 +27,10 @@ git:setup {
 -- Recolor filenames ONLY for tracked changes. Codes from git.yazi:
 -- updated=1, deleted=2, added=3, modified=4, untracked=5, ignored=6, clean=0.
 -- 5/6/0 are intentionally absent → untracked/ignored/clean keep filetype color.
--- ANSI role names, not hexes: these recolor filenames in the file list, so the
--- Mocha hexes they used to carry were the same 1.2:1-on-light problem theme.toml
--- had. Named colors resolve through the terminal palette, which wezterm swaps
--- per appearance — see the header comment in theme.toml. Kept in sync with
+-- ANSI role names, not hexes: these recolor filenames in the file list, so
+-- hex colors tuned for one appearance would be unreadable in the other. Named
+-- colors resolve through the terminal palette, which the terminal swaps per
+-- appearance — see the header comment in theme.toml. Kept in sync with
 -- theme.toml [git].
 local git_filename_styles = {
 	[4] = ui.Style():fg("blue"),   -- modified

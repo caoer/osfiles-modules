@@ -5,9 +5,8 @@
 # mechanism yazi offers. `[mgr] syntect_theme` cannot do it: it is documented as
 # "not available after using a flavor", and it resolves ABSOLUTE paths only
 # (verified — neither `tmthemes/x.tmTheme` nor `~/.config/yazi/tmthemes/x.tmTheme`
-# loads). An absolute path cannot serve both this repo's macOS checkout and the
-# servers, where home/profiles/server-tools-pro.nix store-copies config/yazi to
-# ~/.config/yazi. Flavors are referenced by NAME and resolved relative to the
+# loads). An absolute path cannot serve both a live checkout and a store-copied
+# deployment of this config. Flavors are referenced by NAME and resolved relative to the
 # config dir, so they are portable by construction. Hence a flavor.
 #
 # It is deliberately almost empty. ../../theme.toml sets every UI color as an

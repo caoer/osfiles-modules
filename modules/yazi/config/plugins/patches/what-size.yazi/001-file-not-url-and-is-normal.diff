@@ -1,7 +1,7 @@
-diff --git a/config/yazi/plugins/what-size.yazi/main.lua b/config/yazi/plugins/what-size.yazi/main.lua
+diff --git a/main.lua b/main.lua
 index 00b9109b..5d7a9033 100644
---- a/config/yazi/plugins/what-size.yazi/main.lua
-+++ b/config/yazi/plugins/what-size.yazi/main.lua
+--- a/main.lua
++++ b/main.lua
 @@ -20,8 +20,9 @@
  local get_selected_paths = ya.sync(function(state)
      local result = {}

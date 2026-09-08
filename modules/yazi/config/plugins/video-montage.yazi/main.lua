@@ -30,8 +30,8 @@ local function ffmpeg()
 	return sysbin("ffmpeg")
 end
 
--- Availability gate: headless servers omit ffmpeg (osf.headlessCli.mediaPreview
--- = false) to save ~410 MiB of A/V decode + GUI closure. Without ffmpeg the
+-- Availability gate: headless servers may omit ffmpeg to save ~410 MiB of
+-- A/V decode + GUI closure. Without ffmpeg the
 -- montage/waveform can't render, so skip cleanly (blank preview, no error spam)
 -- instead of failing. Probe once and memoize; ffmpeg() yields via fs.cha, so
 -- this may only run inside a coroutine (peek/preload).

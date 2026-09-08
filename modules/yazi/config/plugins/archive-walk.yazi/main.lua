@@ -25,8 +25,8 @@
 --                          localhost NFSv3. No kernel extension and no
 --                          privilege, ~2s cold. Apple Silicon only, and each
 --                          mount gets its own 512 MiB guest.
---   Linux  .sqfs           squashfuse, through the setuid fusermount3 that
---                          `osf.fuseUserspace.enable` installs
+--   Linux  .sqfs           squashfuse, through a setuid fusermount3 where
+--                          the system provides one
 --          disk images     nothing. An unprivileged FUSE mount needs that same
 --                          setuid helper and stock NixOS ships none, so
 --                          squashfuse cannot even spawn it and unmount returns
@@ -422,7 +422,7 @@ end
 
 -- --- Create ------------------------------------------------------------------
 
--- The inverse of walking in. Measured on one 69 MB tree (zmax, M4 Max):
+-- The inverse of walking in. Measured on one 69 MB tree (M4 Max):
 --
 --   squashfs zstd-19   15 MB   1s
 --   ULFO dmg           38 MB   9s

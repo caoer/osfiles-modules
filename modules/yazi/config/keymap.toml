@@ -5,6 +5,7 @@ keymap = [
     { on = ["<Esc>"], run = "escape", desc = "Exit visual mode, clear selected, or cancel search" },
     { on = ["q"], run = "quit", desc = "Exit the process" },
     { on = ["Q"], run = "quit --no-cwd-file", desc = "Exit without cd-on-quit (skip cwd-file)" },
+    { on = ["<C-c>"], run = "close", desc = "Close the current tab, or quit if it's last" },
     { on = ["<C-z>"], run = "suspend", desc = "Suspend the process" },
 
     # Movement (arrow prev/next wrap around the list)
@@ -63,12 +64,34 @@ keymap = [
     { on = ["f", "f"], run = "filter --smart", desc = "Filter files (in this dir)" },
     { on = ["F"], run = "plugin smart-filter", desc = "Smart filter" },
     { on = ["<C-s>"], run = "escape --search", desc = "Cancel the ongoing search" },
-    { on = ["s", "n"], run = "sort natural", desc = "Sort by name (default)" },
-    { on = ["s", "s"], run = ["sort size --reverse=yes", "linemode size"], desc = "Sort by size" },
-    { on = ["s", "m"], run = ["sort mtime --reverse=yes", "linemode mtime"], desc = "Sort by modified time" },
-    { on = ["s", "b"], run = ["sort btime --reverse=yes", "linemode btime"], desc = "Sort by birth time" },
-    { on = ["s", "e"], run = "sort extension", desc = "Sort by extension" },
+    # Sorting, on the `s` prefix rather than the preset's `,`. Lowercase
+    # ascending, uppercase descending — the preset's full matrix, so ascending
+    # size/mtime/btime exist. The size/time sorts switch linemode to match;
+    # `m c` below restores the default count linemode.
+    { on = ["s", "n"], run = "sort natural --reverse=no", desc = "Sort naturally" },
+    { on = ["s", "N"], run = "sort natural --reverse=yes", desc = "Sort naturally (reverse)" },
+    { on = ["s", "a"], run = "sort alphabetical --reverse=no", desc = "Sort alphabetically" },
+    { on = ["s", "A"], run = "sort alphabetical --reverse=yes", desc = "Sort alphabetically (reverse)" },
+    { on = ["s", "e"], run = "sort extension --reverse=no", desc = "Sort by extension" },
+    { on = ["s", "E"], run = "sort extension --reverse=yes", desc = "Sort by extension (reverse)" },
+    { on = ["s", "s"], run = ["sort size --reverse=no", "linemode size"], desc = "Sort by size" },
+    { on = ["s", "S"], run = ["sort size --reverse=yes", "linemode size"], desc = "Sort by size (reverse)" },
+    { on = ["s", "m"], run = ["sort mtime --reverse=no", "linemode mtime"], desc = "Sort by modified time" },
+    { on = ["s", "M"], run = ["sort mtime --reverse=yes", "linemode mtime"], desc = "Sort by modified time (reverse)" },
+    { on = ["s", "b"], run = ["sort btime --reverse=no", "linemode btime"], desc = "Sort by birth time" },
+    { on = ["s", "B"], run = ["sort btime --reverse=yes", "linemode btime"], desc = "Sort by birth time (reverse)" },
+    { on = ["s", "r"], run = "sort random --reverse=no", desc = "Sort randomly" },
     { on = ["s", "c"], run = 'shell "ls -ltc | less" --block', desc = "List by ctime (status change)" },
+
+    # Linemode. `m c` is the count linemode from plugins/count.yazi (the
+    # yazi.toml default) — without it the sorts above are a one-way door off it.
+    { on = ["m", "c"], run = "linemode count", desc = "Linemode: child count / size" },
+    { on = ["m", "s"], run = "linemode size", desc = "Linemode: size" },
+    { on = ["m", "p"], run = "linemode permissions", desc = "Linemode: permissions" },
+    { on = ["m", "b"], run = "linemode btime", desc = "Linemode: btime" },
+    { on = ["m", "m"], run = "linemode mtime", desc = "Linemode: mtime" },
+    { on = ["m", "o"], run = "linemode owner", desc = "Linemode: owner" },
+    { on = ["m", "n"], run = "linemode none", desc = "Linemode: none" },
 
     # View
     { on = ["<Tab>"], run = "plugin layout-cycle", desc = "Cycle layout: responsive → preview → list" },
@@ -76,10 +99,13 @@ keymap = [
     { on = ["w"], run = "tasks:show", desc = "Show task manager" },
     { on = ["?"], run = "help", desc = "Open help" },
 
-    # Quick navigation. <C-u>/<C-d> belong to DuckDB column scroll (prepend
-    # below); paging lives on the full-page defaults instead.
+    # Quick navigation
+    { on = ["<C-u>"], run = "arrow -50%", desc = "Move cursor up half page" },
+    { on = ["<C-d>"], run = "arrow 50%", desc = "Move cursor down half page" },
     { on = ["<C-b>"], run = "arrow -100%", desc = "Page up" },
     { on = ["<C-f>"], run = "arrow 100%", desc = "Page down" },
+    { on = ["<PageUp>"], run = "arrow -100%", desc = "Page up" },
+    { on = ["<PageDown>"], run = "arrow 100%", desc = "Page down" },
     { on = ["<C-n>"], run = "seek 5", desc = "Scroll preview down" },
     { on = ["<C-p>"], run = "seek -5", desc = "Scroll preview up" },
     { on = ["<Backspace>"], run = "back", desc = "Go back to previous directory" },
@@ -88,7 +114,10 @@ keymap = [
     { on = ["-"], run = "link", desc = "Symlink (absolute)" },
     { on = ["_"], run = "link --relative", desc = "Symlink (relative)" },
 
-    # Shell
+    # Shell. `;`/`:` prompt for a one-off command over the selection (%s, %h);
+    # `!` in the prepend below drops you into a full interactive $SHELL instead.
+    { on = [";"], run = "shell --interactive", desc = "Run a shell command" },
+    { on = [":"], run = "shell --block --interactive", desc = "Run a shell command (block until finishes)" },
     { on = ["S"], run = "plugin what-size", desc = "Calculate directory sizes" },
     # `!` lives only in the prepend below — a keymap copy colliding with a
     # prepend is silently dropped by the section merge, so it was dead weight.
@@ -100,8 +129,11 @@ keymap = [
     { on = ["c", "f"], run = "copy filename", desc = "Copy filename" },
     { on = ["c", "n"], run = "copy name_without_ext", desc = "Copy filename without extension" },
 
-    # Tabs
-    { on = ["t"], run = "tab_create --current", desc = "Create a new tab" },
+    # Tabs. `t t`, not a bare `t`: the router fires a single-key chord on the
+    # spot (yazi-fm/src/router.rs — first on[0] match wins, len==1 short-
+    # circuits), so a bare `t` would make every t-prefixed chord unreachable.
+    { on = ["t", "t"], run = "tab_create --current", desc = "Create a new tab" },
+    { on = ["t", "r"], run = "tab_rename --interactive", desc = "Rename current tab" },
     { on = ["["], run = "tab_switch -1 --relative", desc = "Switch to previous tab" },
     { on = ["]"], run = "tab_switch 1 --relative", desc = "Switch to next tab" },
     { on = ["{"], run = "tab_swap -1", desc = "Swap current tab with previous" },
@@ -139,22 +171,37 @@ on = ["g", "i"]
 run = "plugin lazygit"
 desc = "run lazygit"
 
+# ucc agent seat in this directory, in this terminal; yazi returns on exit.
+# g A r reuses the last launcher/model/effort; g A p picks anew — launcher
+# (fzf), then model and effort (popups; "launcher default" sends no flag —
+# endpoint launchers refuse a foreign --model).
+[[mgr.prepend_keymap]]
+on = ["g", "a"]
+run = "plugin ucc"
+desc = "Start ucc-auto here"
+
+[[mgr.prepend_keymap]]
+on = ["g", "A"]
+run = "plugin ucc -- pick"
+desc = "Start a ucc seat here: pick launcher, model, effort"
+
 # DuckDB keybindings
-# Column scroll lives on <C-d>/<C-u> (vim-style) so H/L keep their default
-# back/forward history meaning. On non-data files these no-op: the plugin only
-# bumps its scrolled_columns state and emits a lateral-scroll seek that plain
-# previewers ignore. Use <C-b>/<C-f> to page the file list.
+# Column scroll lives on <C-Left>/<C-Right> — lateral keys for a lateral motion,
+# leaving <C-u>/<C-d> as yazi's half-page cursor arrows and H/L as back/forward
+# history. On non-data files these no-op: the plugin only bumps its
+# scrolled_columns state and emits a lateral-scroll seek that plain previewers
+# ignore.
 # The `--` is mandatory on yazi 26.x: without it `-1`/`-open` are parsed as flags
 # to `plugin`, job.args[1] arrives nil, and every binding falls through to the
 # opener — so the scroll keys launched the DuckDB UI instead of scrolling
 # columns, and `g o` opened the UI too. Same convention as archive-walk/fg.
 [[mgr.prepend_keymap]]
-on = "<C-u>"
+on = "<C-Left>"
 run = "plugin duckdb -- -1"
 desc = "Scroll one column to the left"
 
 [[mgr.prepend_keymap]]
-on = "<C-d>"
+on = "<C-Right>"
 run = "plugin duckdb -- +1"
 desc = "Scroll one column to the right"
 
@@ -257,12 +304,11 @@ desc = "Pack selected folders into DMGs here"
 # `set -- %s` re-establishes the selected files as shell positionals: %s splats
 # the shell-escaped paths, so $#/$1/$2 work again (the old implicit argv is
 # gone). `shell --block -- <raw>` avoids double-escaping the quotes.
-# The `$# -eq 2` guard is load-bearing: given any count other than two,
-# `hunk diff` stops treating the args as file paths and resolves them as Git
-# revisions ("could not resolve Git revision or range").
-# Same `g d` contract as osfiles' yazi-basic and cyazi keymaps — one differ
-# across the fleet. hunk lands with this module (osf.yazi ships it), so the
-# binding and the binary cannot drift apart.
+#
+# hunk (modem-dev/hunk) takes the two concrete files directly — no `diff -u`
+# pipe. The `$# -eq 2` guard is load-bearing: with any count other than two
+# positionals `hunk diff` stops treating them as file paths and resolves them
+# as Git revisions, failing with "could not resolve Git revision or range".
 [[mgr.prepend_keymap]]
 on = ["g", "d"]
 run = 'shell --block -- set -- %s; if [ $# -eq 2 ]; then hunk diff "$1" "$2"; else echo Select exactly 2 files; read; fi'

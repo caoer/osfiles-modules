@@ -21,8 +21,8 @@ wrap = "yes"
 # $-family stopped receiving argv on nightly, #4108). Shell-escaped by yazi.
 [opener]
 edit = [{ run = '$EDITOR %s', block = true }]
-# Per-OS: `open` is macOS-only. Linux hosts are headless servers
-# (home/linux/server-files.nix) — no GUI/xdg, so fall back to $EDITOR.
+# Per-OS: `open` is macOS-only. Linux hosts here are headless servers —
+# no GUI/xdg, so fall back to $EDITOR.
 # A bare `open` on Linux hangs as an unfinished task (no such binary).
 open = [
   { run = 'open %s', for = "macos" },
@@ -161,8 +161,8 @@ prepend_previewers = [
   { url = "*.sparseimage", run = "archive-walk" },
   { url = "*.img", run = "archive-walk" },
   { url = "*.cdr", run = "archive-walk" },
-  # squashfs is the Linux side of the same trade: mounted in O(1) where
-  # osf.fuseUserspace.enable grants a setuid fusermount3, extracted otherwise.
+  # squashfs is the Linux side of the same trade: mounted in O(1) where a
+  # setuid fusermount3 is available, extracted otherwise.
   { url = "*.squashfs", run = "archive-walk" },
   { url = "*.sqfs", run = "archive-walk" },
   { url = "*.sfs", run = "archive-walk" },
