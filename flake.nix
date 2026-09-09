@@ -93,12 +93,13 @@
     # `nix flake show`/`check` would fail on that system.
     hunk.url = "github:modem-dev/hunk/v0.18.2";
 
-    # Pinned nixpkgs for yazi 26.5.6 — same rev osfiles / the fleet run.
-    # modules/yazi/config targets the 26.5.6 schema (group fetchers + git
-    # plugin @since 26.5.6). Consumer nixpkgs often still ships 26.1.22, which
-    # rejects the config (`missing field id in prepend_fetchers`) and refuses
-    # the git plugin. Deliberately NO `follows` — the pin is the point.
-    nixpkgs-yazi.url = "github:NixOS/nixpkgs/9ae611a455b90cf061d8f332b977e387bda8e1ca";
+    # Pinned nixpkgs for yazi 26.9.1 — same rev osfiles / the fleet run.
+    # modules/yazi/config targets the 26.9.1 schema (yazi-rs/plugins 4dc7f1b:
+    # git plugin @since 26.8.15, rt.term.light() as a function, copy dirpath).
+    # A lagging consumer nixpkgs rejects the config (`missing field id in
+    # prepend_fetchers`) and refuses the plugins. Deliberately NO `follows` —
+    # the pin is the point.
+    nixpkgs-yazi.url = "github:NixOS/nixpkgs/da39501c8d0a093136854eddcd6927c8a8bb0d8f";
   };
 
   outputs =

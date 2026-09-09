@@ -1,10 +1,10 @@
 # modules/yazi/yazi.nix — yazi file manager + shared cyazi-derived config.
 #
 # yaziPackage is injected by _all-hm.nix from the flake's nixpkgs-yazi pin
-# (yazi 26.5.6). The config under ./config targets that schema (group
-# fetchers, git plugin @since 26.5.6); shipping pkgs.yazi from a lagging
-# consumer nixpkgs breaks rr with `missing field id in prepend_fetchers`
-# and `Plugin git requires at least Yazi 26.5.6`.
+# (yazi 26.9.1). The config under ./config targets that schema (group
+# fetchers, yazi-rs/plugins 4dc7f1b @since 26.8.15); shipping pkgs.yazi from
+# a lagging consumer nixpkgs breaks rr with `missing field id in
+# prepend_fetchers` and `Plugin git requires at least Yazi 26.8.15`.
 #
 # hunkPackage is the `g d` differ (keymap.toml). Injected the same way, and
 # nullable: upstream hunk builds aarch64-darwin/aarch64-linux/x86_64-linux
@@ -25,8 +25,8 @@ in
     package = lib.mkOption {
       type = lib.types.package;
       default = yaziPackage;
-      defaultText = lib.literalExpression "nixpkgs-yazi.yazi (26.5.6 pin)";
-      description = "Yazi package. Defaults to the fleet pin (26.5.6).";
+      defaultText = lib.literalExpression "nixpkgs-yazi.yazi (26.9.1 pin)";
+      description = "Yazi package. Defaults to the fleet pin (26.9.1).";
     };
   };
 

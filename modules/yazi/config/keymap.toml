@@ -125,15 +125,14 @@ keymap = [
 
     # Copy paths
     { on = ["c", "c"], run = "copy path", desc = "Copy absolute path" },
-    { on = ["c", "d"], run = "copy dirname", desc = "Copy directory path" },
+    { on = ["c", "d"], run = "copy dirpath", desc = "Copy directory path" },
     { on = ["c", "f"], run = "copy filename", desc = "Copy filename" },
     { on = ["c", "n"], run = "copy name_without_ext", desc = "Copy filename without extension" },
 
-    # Tabs. `t t`, not a bare `t`: the router fires a single-key chord on the
-    # spot (yazi-fm/src/router.rs — first on[0] match wins, len==1 short-
-    # circuits), so a bare `t` would make every t-prefixed chord unreachable.
-    { on = ["t", "t"], run = "tab_create --current", desc = "Create a new tab" },
-    { on = ["t", "r"], run = "tab_rename --interactive", desc = "Rename current tab" },
+    # Tabs. A bare `t` claims the whole prefix: the router fires a single-key
+    # chord on the spot (yazi-fm/src/router.rs — first on[0] match wins,
+    # len==1 short-circuits), so no other chord may start with `t`.
+    { on = ["t"], run = "tab_create --current", desc = "Create a new tab" },
     { on = ["["], run = "tab_switch -1 --relative", desc = "Switch to previous tab" },
     { on = ["]"], run = "tab_switch 1 --relative", desc = "Switch to next tab" },
     { on = ["{"], run = "tab_swap -1", desc = "Swap current tab with previous" },

@@ -28,8 +28,8 @@
     ./starship/starship.nix
     ./tmux/tmux.nix
     (import ./yazi/yazi.nix {
-      # Resolve yazi from the pinned nixpkgs-yazi input (26.5.6), not the
-      # consumer's pkgs.yazi which often lags at 26.1.22.
+      # Resolve yazi from the pinned nixpkgs-yazi input (26.9.1), not the
+      # consumer's pkgs.yazi which often lags behind the config's schema.
       yaziPackage =
         (import nixpkgsYazi {
           inherit (pkgs.stdenv.hostPlatform) system;
