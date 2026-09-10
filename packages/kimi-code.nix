@@ -1,5 +1,5 @@
 # kimi-code — Moonshot AI terminal agent CLI (prebuilt binary).
-# PINNED to 0.29.0: tracks https://code.kimi.com/kimi-code/latest.
+# PINNED to 0.42.0: tracks https://code.kimi.com/kimi-code/latest.
 # Bump `version` + platform hashes from the release manifest on each update:
 #   https://code.kimi.com/kimi-code/binaries/<ver>/manifest.json
 {
@@ -10,25 +10,25 @@
 }:
 
 let
-  version = "0.29.0";
+  version = "0.42.0";
 
   # Manifest platform keys → nix system + SRI hashes (sha256 of the raw binary).
   assets = {
     "aarch64-darwin" = {
       platform = "darwin-arm64";
-      hash = "sha256-XMz1NgTyDFSZ6hDDCUKY9Joa1Z+pDN3Z/X4LpEgV/dM=";
+      hash = "sha256-12T97ybxuxCMx0x/u0D9viP2fYxQfPk6L5+qTf+5+N8=";
     };
     "x86_64-darwin" = {
       platform = "darwin-x64";
-      hash = "sha256-r9HIW7K3c1GBzrBsg3CHX2NlIDSoy284RcwrCdKsGJw=";
+      hash = "sha256-WDk0U8qmlhyP4jNV4ye8NasTYdI7ye7Kp6aQdRjTRP0=";
     };
     "aarch64-linux" = {
       platform = "linux-arm64";
-      hash = "sha256-YziJj43Wf5+CP8AFTBQs3goeLR0eLrzts0Oty4FlOUo=";
+      hash = "sha256-T6DW96UXFzPZORsHTr/jGOgafug69sZI1RxCg0lhzFo=";
     };
     "x86_64-linux" = {
       platform = "linux-x64";
-      hash = "sha256-RPCu1YZVeQt4/orBv0Qhfz/A5ll3q7dCb57cqUPdxEQ=";
+      hash = "sha256-67TvAthf4KKd2pWlpgvNBgiijB/zMdJ+mb5UudRy4z0=";
     };
   };
 
