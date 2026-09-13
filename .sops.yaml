@@ -32,6 +32,7 @@ keys:
   - &hua_lax      age1au9s64y2hly9wlhmw70ycycs3c9200gznd3etc5dh3rrqus6ruxqtudfm6
   - &ply_lax      age1jzujfqjzvqf2v0csuquh0ztxrhjpczqfk04klyxk7m6fqvcffdmsz9854f
   - &misha_lax    age1g25m8wj3a6c9gpufayup6stlslrjzgcfwhhcnan5k3eftgjsw90qleancr
+  - &ann_lax      age1qks6vmtl0w079tp0rc8tvfv752a4qv53k4g97xtz7agf6339tgsqn06ccg
   - &wanqiang_lax age1dl3ed5mx2sftzuzmhuygdrw2pgln0f9kx4537qz08umd08z5cvuszhr0jt
   - &yujing_lax   age1s0r2gs4uee24ceta49uetydr0ppcrwjaatjsn884yzxnjvqk8d3ql5wgk3
   - &zhangluo_lax age12m4jg0xsf34ftqyvhzhpguv8ykx82xn4l707av7tn3r3q8hsr9kqcw5gdn
@@ -51,6 +52,7 @@ creation_rules:
           - *hua_lax
           - *ply_lax
           - *misha_lax
+          - *ann_lax
           - *wanqiang_lax
           - *yujing_lax
           - *zhangluo_lax
