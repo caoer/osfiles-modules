@@ -68,6 +68,7 @@ let
     fi
 
     target_uid="$(${pkgs.coreutils}/bin/id -u ${cfg.user})"
+    extra_uids="$(${pkgs.coreutils}/bin/printf '%s\n' ${lib.concatMapStringsSep " " (u: "\"$(${pkgs.coreutils}/bin/id -u ${u})\"") cfg.extraUsers})"
 
     url="${cfg.apiUrl}/config/$token?type=singbox&features=${lib.concatStringsSep "," cfg.features}&preset=${apiPreset}&port=-1&env.HOME=${userHome}"
     ${lib.optionalString (cfg.extraQueryParams != "") ''url="$url&${cfg.extraQueryParams}"''}
@@ -131,17 +132,20 @@ let
 
     echo "$raw" | ${pkgs.jq}/bin/jq \
       --argjson uid "$target_uid" \
+      --arg extra_uids "$extra_uids" \
       --arg cidrs "$host_cidrs" \
+      --argjson ex_route ${lib.escapeShellArg (builtins.toJSON cfg.routeExcludeAddress)} \
       --arg ifaces "$docker_ifaces" \
       --argjson force_loose ${if isStrict then "false" else "true"} \
       '
         ($cidrs | split("\n") | map(select(length > 0))) as $ex_addr
+        | ($extra_uids | split("\n") | map(select(length > 0) | tonumber)) as $more_uids
         | ($ifaces | split("\n") | map(select(length > 0))) as $ex_if
         | (.inbounds // [] | .[] | select(.type == "tun")) |= (
             .auto_redirect = true
-            | if $uid == 0 then del(.include_uid) else .include_uid = [$uid] end
+            | if $uid == 0 then del(.include_uid) else .include_uid = ([$uid] + $more_uids) end
             | if $force_loose then .strict_route = false else . end
-            | .route_exclude_address = (((.route_exclude_address // []) + $ex_addr) | unique)
+            | .route_exclude_address = (((.route_exclude_address // []) + $ex_addr + $ex_route) | unique)
             | if ($ex_if | length) > 0
               then .exclude_interface = (((.exclude_interface // []) + $ex_if) | unique)
               else . end
@@ -283,6 +287,29 @@ in
     user = lib.mkOption {
       type = lib.types.str;
       description = "System user whose UCC profile processes are routed (resolved to UID for TUN include_uid).";
+    };
+
+    extraUsers = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "cosops" ];
+      description = ''
+        Further system users whose UCC profile processes ride the same TUN
+        (appended to include_uid). The profile route rules match
+        `.local/share/ucc/profiles/<profile>/` under any home, so one instance
+        serves every agent user on the host. Ignored when `user` is root.
+      '';
+    };
+
+    routeExcludeAddress = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "10.60.0.0/14" ];
+      description = ''
+        CIDRs the TUN leaves to the next policy rule (route_exclude_address):
+        a destination another uid-scoped tun on the host owns at a lower rule
+        priority than this instance's 90xx rules.
+      '';
     };
 
     instanceName = lib.mkOption {
