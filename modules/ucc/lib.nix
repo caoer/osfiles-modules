@@ -388,6 +388,7 @@ in
       enableTerminalAgentHooks ? false,
       autoArchiveAfterMerge ? false,
       authPasswordHash ? null,
+      appendSystemPrompt ? "",
     }:
     pkgs.writeText "paseo-base-${name}.json" (builtins.toJSON {
       version = 1;
@@ -397,7 +398,7 @@ in
         inherit browserTools enableTerminalAgentHooks;
         mcp = { injectIntoAgents = true; };
         inherit autoArchiveAfterMerge;
-        appendSystemPrompt = "";
+        inherit appendSystemPrompt;
         cors = { allowedOrigins = [ "https://app.paseo.sh" ]; };
       } // pkgs.lib.optionalAttrs (authPasswordHash != null) {
         auth = { password = authPasswordHash; };
@@ -425,6 +426,18 @@ in
       type = lib.types.bool;
       default = false;
       description = "daemon.autoArchiveAfterMerge (auto-archive worktree agents once their PR merges).";
+    };
+    appendSystemPrompt = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = ''
+        daemon.appendSystemPrompt — text every agent the daemon starts gets
+        appended to its system prompt, whatever the provider (codex receives
+        it as developerInstructions, claude as --append-system-prompt).
+        The place for host rules a seat without a hook plane cannot get any
+        other way: where its working folder is, what /tmp is for, how much
+        of the box it may take.
+      '';
     };
     authPasswordHash = lib.mkOption {
       type = lib.types.nullOr lib.types.str;

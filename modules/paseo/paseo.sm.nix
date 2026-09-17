@@ -141,7 +141,7 @@ in
         uccBinDir = "${home}/.local/share/ucc/bin";
         baseConfigFile = agentLib.mkPaseoBaseConfig {
           name = "foreign";
-          inherit (cfg.paseoConfig) listen relay features browserTools enableTerminalAgentHooks autoArchiveAfterMerge authPasswordHash;
+          inherit (cfg.paseoConfig) listen relay features browserTools enableTerminalAgentHooks autoArchiveAfterMerge authPasswordHash appendSystemPrompt;
         };
         inherit (cfg.paseoConfig) defaultLauncher providerOverrides profilePresets;
       };
