@@ -167,10 +167,10 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1788440816,
-        "narHash": "sha256-DsJrOVHE6YtiCAXOC2J83mGLz1KWeB51UIKmi6e/bnQ=",
+        "lastModified": 1789802466,
+        "narHash": "sha256-kfPhnNzmPgoNlbrEUVEsvZSvplynODkpveBXuD95Dto=",
         "ref": "main",
-        "rev": "4f1f84371545a3799a7faf693cfd4c0b1a3dc7ab",
+        "rev": "1c659f77c81e93ac530731040fbc1143ad6f3591",
         "shallow": true,
         "type": "git",
         "url": "https://git.0xdao.app/caoer115/herdr"
@@ -387,11 +387,11 @@
     },
     "nixpkgs_3": {
       "locked": {
-        "lastModified": 1779357205,
-        "narHash": "sha256-cCO8aTqss5x9Ky8GWkpY0Hy5fyTZEbtifSUV8QjSzic=",
+        "lastModified": 1779911860,
+        "narHash": "sha256-ubcLAcKBDCZjhxw/kH5DL5GdBZQdzLqpkTe7HonvJVs=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "f83fc3c307e74bc5fd5adb7eb6b8b13ffd2a36e1",
+        "rev": "c0a89c379b4ac67c7b13b051ddbd4e0dbc9b0eaf",
         "type": "github"
       },
       "original": {
