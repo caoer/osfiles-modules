@@ -57,6 +57,21 @@ let
     ];
   };
 
+  # ── Named SoR clients group (present when any edge.sorClients exist) ──
+  # One loopback socks5 outbound per isolated sing-box-sor instance, tagged
+  # to-sor-<name>. Standalone (no urltest — each reaches a different core)
+  # and outside proxy-select: nothing routes to one until a rule names it.
+  sorClientsGroup = {
+    outbounds = lib.mapAttrsToList (name: inst: {
+      type = "socks";
+      tag = "to-sor-${name}";
+      server = wk.localhost;
+      server_port = inst.listenPort;
+    }) ecfg.sorClients;
+    urltest = false;
+    inMainPool = false;
+  };
+
   clashOn = tp.clashApiPort != null;
 
 in
@@ -77,6 +92,7 @@ lib.mkIf (cfg.enable && ecfg.enable && tp.enable) {
     outboundGroups = {
       gateway-cd = gatewayCdGroup;
     }
+    // lib.optionalAttrs (ecfg.sorClients != { }) { sor-clients = sorClientsGroup; }
     // tp.outboundGroups;
     extraOutbounds = tp.outbounds;
 
@@ -172,7 +188,8 @@ lib.mkIf (cfg.enable && ecfg.enable && tp.enable) {
       "network-online.target"
       "easytier.service"
     ]
-    ++ lib.optional sorCfg.enable "${sorCfg.systemdName}.service";
+    ++ lib.optional sorCfg.enable "${sorCfg.systemdName}.service"
+    ++ lib.mapAttrsToList (_: inst: "${inst.systemdName}.service") ecfg.sorClients;
 
     conflictServices = [ "sing-box-tun-slv.service" ];
 

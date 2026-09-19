@@ -293,6 +293,86 @@ in
         };
       };
 
+      # ── Named SoR clients (one isolated sing-box-sor process each) ──
+      # Each instance is a loopback mixed inbound tunnelling over
+      # redis-pubsub to its own core-side service_name — one channel per
+      # core (e.g. bm-cd → gateway-cd's `sor-bm-cd`, bm-macross → the
+      # macross core). Defaults follow `sorClient`, so a host states only
+      # the port and the service name. The tproxy carries them as the
+      # `sor-clients` group (standalone `to-sor-<name>` outbounds, not in
+      # proxy-select) — nothing routes to them until a rule names one.
+      sorClients = mkOption {
+        type = types.attrsOf (
+          types.submodule (
+            { name, ... }:
+            {
+              options = {
+                listenPort = mkOption {
+                  type = types.port;
+                  description = "Loopback mixed (HTTP+SOCKS) port for this SoR client. The tproxy references it as the `to-sor-<name>` socks outbound.";
+                };
+
+                serviceName = mkOption {
+                  type = types.str;
+                  default = "sor-${name}";
+                  defaultText = lib.literalExpression ''"sor-''${name}"'';
+                  description = "Redis-pubsub service/channel name — must match the core side's subscriber.";
+                };
+
+                package = mkOption {
+                  type = types.package;
+                  default = config.osf.gateway.edge.sorClient.package;
+                  defaultText = lib.literalExpression "config.osf.gateway.edge.sorClient.package";
+                  description = "sing-box build with the redis-pubsub V2Ray transport (SoR fork).";
+                };
+
+                redisUrl = mkOption {
+                  type = types.str;
+                  default = config.osf.gateway.edge.redisUrl;
+                  defaultText = lib.literalExpression "config.osf.gateway.edge.redisUrl";
+                  description = "Redis connection URL for the redis-pubsub transport.";
+                };
+
+                muxPassword = mkOption {
+                  type = types.str;
+                  default = config.osf.gateway.edge.muxPassword;
+                  defaultText = lib.literalExpression "config.osf.gateway.edge.muxPassword";
+                  description = "Shadowsocks mux password for the SoR outbound.";
+                };
+
+                systemdName = mkOption {
+                  type = types.str;
+                  default = "sing-box-sor-${name}";
+                  defaultText = lib.literalExpression ''"sing-box-sor-''${name}"'';
+                  description = "Systemd service name for this SoR client.";
+                };
+
+                logLevel = mkOption {
+                  type = types.enum [
+                    "trace"
+                    "debug"
+                    "info"
+                    "warn"
+                    "error"
+                    "fatal"
+                    "panic"
+                  ];
+                  default = "info";
+                  description = "sing-box log level for this SoR client.";
+                };
+              };
+            }
+          )
+        );
+        default = { };
+        example = lib.literalExpression ''
+          {
+            bm-cd = { listenPort = 10841; serviceName = "sor-bm-cd"; };
+          }
+        '';
+        description = "Named isolated SoR sing-box clients, keyed by instance name.";
+      };
+
       # ── Transparent proxy ──────────────────────────────────────────
       tproxy = {
         enable = mkEnableOption "transparent proxy for forwarded traffic";
@@ -335,7 +415,8 @@ in
           description = ''
             Outbound groups for the singbox-config-generator. Each group
             auto-gets a urltest + selector. The gateway-cd group (to-core-rs
-            + to-core-sor) is always injected by the module.
+            + to-core-sor) is always injected by the module; the sor-clients
+            group (one to-sor-<name> per sorClients instance) when any exist.
           '';
         };
 
