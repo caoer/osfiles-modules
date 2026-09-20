@@ -94,6 +94,20 @@ let
           the installer URL. Not a secret — just an identifier.
         '';
       };
+      bootFetch = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Whether ucc-update-<user> fetches the UCC release at boot. Set
+          false on a host whose image carries UCC: every user there still
+          runs UCC as the one shared identity, which rides in the image, so
+          the boot-time fetch is off (ucc-update-<user> is masked), the
+          per-owner copies of the token and the encryption password are not
+          declared as sops secrets, and ENCRYPTION_PASSWORD is not exported
+          into the user's shells. The settings sync and the home layer are
+          the same either way.
+        '';
+      };
       installerTokenSecret = lib.mkOption {
         type = lib.types.str;
         default = "ucc_token";
@@ -333,11 +347,14 @@ let
         git
       ];
       environment = nixLdEnvironment;
+      enable = ucfg.bootFetch;
       serviceConfig = {
         Type = "oneshot";
         User = name;
-        ExecStart = mkInstallerScript name ucfg;
         RemainAfterExit = true;
+      }
+      // lib.optionalAttrs ucfg.bootFetch {
+        ExecStart = mkInstallerScript name ucfg;
       };
     }
   ) cfg.users;
@@ -389,19 +406,22 @@ in
     # NOTE: on a multi-user host, give each user distinct secret names —
     # one sops.secrets entry can only have one owner.
     sops.secrets = lib.mkMerge (
-      lib.mapAttrsToList (name: ucfg: {
-        ${ucfg.installerTokenSecret} = {
-          mode = "0400";
-          owner = name;
-        };
-        ${ucfg.encryptionPasswordSecret} = {
-          mode = "0400";
-          owner = name;
-          # Centralized in osf-modules — all UCC hosts listed in .sops.yaml.
-          # Override per-host with osf.ucc.users.<n>.encryptionPasswordSopsFile.
-          sopsFile = ucfg.encryptionPasswordSopsFile;
-        };
-      }) cfg.users
+      lib.mapAttrsToList (
+        name: ucfg:
+        lib.optionalAttrs ucfg.bootFetch {
+          ${ucfg.installerTokenSecret} = {
+            mode = "0400";
+            owner = name;
+          };
+          ${ucfg.encryptionPasswordSecret} = {
+            mode = "0400";
+            owner = name;
+            # Centralized in osf-modules — all UCC hosts listed in .sops.yaml.
+            # Override per-host with osf.ucc.users.<n>.encryptionPasswordSopsFile.
+            sopsFile = ucfg.encryptionPasswordSopsFile;
+          };
+        }
+      ) cfg.users
     );
 
     systemd.services = installerUnits // settingsUnits;
@@ -424,7 +444,7 @@ in
         let
           passwordPath = config.sops.secrets.${ucfg.encryptionPasswordSecret}.path;
         in
-        ''
+        lib.optionalString ucfg.bootFetch ''
           if [ "$(id -un 2>/dev/null)" = "${name}" ] && [ -r ${passwordPath} ]; then
             export ENCRYPTION_PASSWORD="$(cat ${passwordPath})"
           fi
