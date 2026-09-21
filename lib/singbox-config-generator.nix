@@ -161,6 +161,9 @@
   # ZERO network dependency at startup. Source from R2 at BUILD time
   # instead: packages/geo-cn-ruleset.nix (bump via update-geo-cn.sh).
   geoCnPath,
+  # The same set with its ip_cidr entries removed, for the DNS rule. Route
+  # rules match CN names and CN addresses (geo-cn); DNS rules match names only.
+  geoCnDomainPath,
 
   # ── http_clients ──────────────────────────────────────────────────
   httpClients ? [ ],
@@ -370,11 +373,17 @@ let
       foreignDnsServer
     ]
     ++ extraDnsServers;
+    # CN split by query name: CN-listed names resolve on the domestic server,
+    # everything else on the foreign one, and no foreign name is ever shown to
+    # the domestic resolver. The rule uses geo-cn-domain, never geo-cn: a DNS
+    # rule whose rule_set carries ip_cidr entries is fatal at sing-box startup
+    # unless it sets match_response, and `sing-box check` does not load
+    # rule-sets, so only `sing-box run` catches it.
     rules =
       extraDnsRules
       ++ [
         {
-          rule_set = [ "geo-cn" ];
+          rule_set = [ "geo-cn-domain" ];
           action = "route";
           server = dnsDomestic.tag;
         }
@@ -502,6 +511,12 @@ let
         type = "local";
         format = "source";
         path = geoCnPath;
+      }
+      {
+        tag = "geo-cn-domain";
+        type = "local";
+        format = "source";
+        path = geoCnDomainPath;
       }
     ];
   }

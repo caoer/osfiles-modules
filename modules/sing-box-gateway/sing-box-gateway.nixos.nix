@@ -38,6 +38,15 @@ let
 
   gen = (import ../../lib/singbox-config-generator.nix) { inherit lib; };
 
+  # geo-cn without its ip_cidr entries — the rule-set the DNS rule may use.
+  # Derived from whatever geoCnPath is set to, so the two never drift. A set
+  # that is empty after stripping fails the build instead of sing-box startup.
+  geoCnDomain = pkgs.runCommand "geo-cn-domain.json" { nativeBuildInputs = [ pkgs.jq ]; } ''
+    jq '.rules |= (map(del(.ip_cidr)) | map(select(length > 0)))' ${cfg.geoCnPath} > "$out"
+    jq -e '(.rules | length > 0) and ([.rules[] | has("ip_cidr")] | any | not)' "$out" > /dev/null \
+      || { echo "geo-cn-domain: no name rules left in ${cfg.geoCnPath}" >&2; exit 1; }
+  '';
+
   singBoxPkg = cfg.package;
   dashboardPkg = cfg.dashboardPackage;
 
@@ -80,6 +89,7 @@ let
       dnsListenPort = cfg.dns.listenPort;
 
       geoCnPath = cfg.geoCnPath;
+      geoCnDomainPath = geoCnDomain;
       logLevel = cfg.logLevel;
       cacheFilePath = "${cfg.stateDirectory}/cache.db";
 
