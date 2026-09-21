@@ -394,10 +394,32 @@ let
       foreignDnsServer
     ]
     ++ extraDnsServers;
+    # CN split by response matching. geo-cn carries domains AND CN CIDRs, and
+    # a DNS rule may only test CIDRs against a response it has been handed:
+    # `evaluate` asks the domestic server, then the geo-cn rule keeps that
+    # answer when the name is CN-listed or the answer lands in a CN range.
+    # Everything else falls through to the foreign server. Address queries
+    # only — other record types carry no address to match.
+    # `sing-box check` does not load rule-sets, so only `sing-box run` proves
+    # this block: a CIDR-bearing rule_set without match_response is fatal at
+    # startup.
     rules =
       extraDnsRules
       ++ [
         {
+          query_type = [
+            "A"
+            "AAAA"
+          ];
+          action = "evaluate";
+          server = dnsDomestic.tag;
+        }
+        {
+          query_type = [
+            "A"
+            "AAAA"
+          ];
+          match_response = true;
           rule_set = [ "geo-cn" ];
           action = "route";
           server = dnsDomestic.tag;
