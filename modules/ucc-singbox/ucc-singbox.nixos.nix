@@ -43,7 +43,7 @@
 }:
 let
   cfg = config.osf.uccSingbox;
-  singboxPkg = pkgs.callPackage ../../packages/sing-box.nix { };
+  singboxPkg = cfg.package;
 
   inst = cfg.instanceName;
   serviceName = "sing-box-ucc-${inst}";
@@ -283,6 +283,12 @@ in
 {
   options.osf.uccSingbox = {
     enable = lib.mkEnableOption "per-UCC-profile sing-box routing (mesh-network API)";
+
+    package = lib.mkOption {
+      type = lib.types.package;
+      default = pkgs.callPackage ../../packages/sing-box.nix { };
+      description = "sing-box package to use.";
+    };
 
     user = lib.mkOption {
       type = lib.types.str;
