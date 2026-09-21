@@ -73,7 +73,7 @@ in
     relay = {
       endpoint = lib.mkOption {
         type = lib.types.str;
-        default = "paseo.0xtau.com:443";
+        default = "paseo.lockin.bot:443";
         description = "Paseo relay endpoint.";
       };
       useTls = lib.mkOption {
