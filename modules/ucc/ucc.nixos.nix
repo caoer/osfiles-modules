@@ -259,7 +259,7 @@ let
         };
       };
       autoMemoryEnabled = true;
-      effortLevel = "xhigh";
+      effortLevel = "medium";
       verbose = false;
       model = "claude-opus-5-5[1m]";
       enableWorkflows = false;
