@@ -433,6 +433,20 @@ in
 
     environment.systemPackages = [ singboxPkg ];
 
+    # What sing-box writes back through its tun — the answers to the DNS
+    # queries hijack-dns took off the routed users — arrives on that tun
+    # from the upstream resolver's address. The nixos-fw rpfilter chain's fib
+    # lookup for that source lands in main (eth0, not the tun) and drops it;
+    # TCP is unaffected because auto_redirect carries it over nftables. Cached
+    # names still answer, so the symptom is "some names resolve, new ones time
+    # out". The kernel names the tun (the first free tunN — EasyTier may hold
+    # tun0), so the exemption keys on the address the profile gives it
+    # (TEST-NET-1, the same one tunCleanup keys on), not on a name.
+    networking.firewall.extraReversePathFilterRules = ''
+      ip daddr 192.0.2.0/30 accept
+      ip6 daddr fdfe:dcba:9876::/126 accept
+    '';
+
     sops.secrets = {
       ${cfg.tokenSecret} = { };
     } // lib.optionalAttrs isStrict {
