@@ -12,13 +12,13 @@
 }:
 
 let
-  version = "0.155.1";
+  version = "0.156.0";
 
   assets = {
     "x86_64-linux" = {
       target = "x86_64-unknown-linux-musl";
-      sha256 = "05cibl5lg0d2id4pc8nc1nn004z39lskk85i0xz79gy3xcnqpvx0";
-      codeModeHostSha256 = "0bbv0qkksdw7f0b8z4x3d9dny4xm3wvisdgbmhcfhnzm79s87l4z";
+      sha256 = "0yswajr7q04vz0a7rbjrqa1k1ciqn85543p5a7y8q5m54npxjj9x";
+      codeModeHostSha256 = "0fz5r94s8sdvh08zrfcidrmdj2jm3pz4i98w3bq7fkvb1fdwg0w3";
     };
   };
 
