@@ -26,7 +26,7 @@ local RECENT = STATE_DIR .. "/ucc-recent"
 local MODELS = {
 	{ on = "d", desc = "launcher default", value = nil },
 	{ on = "f", desc = "claude-fable-5-1", value = "claude-fable-5-1" },
-	{ on = "o", desc = "claude-opus-5", value = "claude-opus-5" },
+	{ on = "o", desc = "claude-opus-5-5", value = "claude-opus-5-5" },
 	{ on = "O", desc = "claude-opus-4-8", value = "claude-opus-4-8" },
 	{ on = "s", desc = "sonnet", value = "sonnet" },
 }

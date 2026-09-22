@@ -261,7 +261,7 @@ let
       autoMemoryEnabled = true;
       effortLevel = "xhigh";
       verbose = false;
-      model = "claude-opus-4-8[1m]";
+      model = "claude-opus-5-5[1m]";
       enableWorkflows = false;
       workflowKeywordTriggerEnabled = false;
     }

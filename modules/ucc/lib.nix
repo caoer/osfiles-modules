@@ -80,7 +80,7 @@ let
         { id = "xiaomi/mimo-v2.5-pro[1m]"; label = "Xiaomi: MiMo-V2.5-Pro (1M)"; }
         { id = "qwen/qwen3.8-max[1m]"; label = "Qwen: Qwen3.8-Max (1M)"; }
         { id = "qwen/qwen3.7-plus[1m]"; label = "Qwen: Qwen3.7-Plus (1M)"; }
-        { id = "anthropic/claude-opus-5[1m]"; label = "Anthropic: Claude Opus 5 (1M)"; }
+        { id = "anthropic/claude-opus-5.5[1m]"; label = "Anthropic: Claude Opus 5.5 (1M)"; }
         { id = "anthropic/claude-sonnet-5[1m]"; label = "Anthropic: Claude Sonnet 5 (1M)"; }
         { id = "anthropic/claude-fable-5[1m]"; label = "Anthropic: Claude Fable 5 (1M)"; }
         { id = "anthropic/claude-fable-5-1[1m]"; label = "Anthropic: Claude Fable 5.1 (1M)"; }
