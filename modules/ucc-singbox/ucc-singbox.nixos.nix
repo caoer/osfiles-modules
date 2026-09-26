@@ -60,6 +60,9 @@ let
   fetchScript = pkgs.writeShellScript "${serviceName}-fetch" ''
     set -eu
     umask 077
+    # Output path: the unit start writes the live config; the -update unit
+    # writes a candidate beside it to compare.
+    out="''${1:-${runtimeConfig}}"
 
     token="$(cat "${config.sops.secrets.${cfg.tokenSecret}.path}")"
     if [ -z "$token" ]; then
@@ -160,7 +163,7 @@ let
                 .action != "sniff" and .action != "hijack-dns"
               )))
           )
-      ' > ${runtimeConfig}
+      ' > "$out"
     echo "${serviceName}: tun exclude addrs=$(echo "$host_cidrs" | tr '\n' ' ')"
 
     ${lib.optionalString isStrict ''
@@ -178,13 +181,28 @@ let
           "udp_over_tcp": true
         }]
         | .route.final = "lan-proxy"
-      ' ${runtimeConfig} > ${runtimeConfig}.tmp && mv ${runtimeConfig}.tmp ${runtimeConfig}
+      ' "$out" > "$out.tmp" && mv "$out.tmp" "$out"
     ''}
 
-    ${singboxPkg}/bin/sing-box check -c ${runtimeConfig}
+    ${singboxPkg}/bin/sing-box check -c "$out"
 
-    profiles=$(${pkgs.jq}/bin/jq '[.route.rules // [] | .[] | select(.process_path_regex)] | length' ${runtimeConfig})
+    profiles=$(${pkgs.jq}/bin/jq '[.route.rules // [] | .[] | select(.process_path_regex)] | length' "$out")
     echo "${serviceName}: ready — $profiles profile route(s), uid=$target_uid${lib.optionalString isStrict ", strict mode (lan-proxy → ${cfg.lanProxy.server}:${toString cfg.lanProxy.port})"}"
+  '';
+
+  # Manual refresh (systemctl start <serviceName>-update): fetch a candidate
+  # config and restart the router only when it differs from the live one — a
+  # profile added on the UCC config page reaches this host without a rebuild.
+  updateScript = pkgs.writeShellScript "${serviceName}-update" ''
+    set -eu
+    next=/run/${serviceName}-update/config.json
+    ${fetchScript} "$next"
+    if ${pkgs.diffutils}/bin/cmp -s "$next" ${runtimeConfig}; then
+      echo "${serviceName}: config unchanged"
+    else
+      echo "${serviceName}: config changed — restarting ${serviceName}"
+      ${pkgs.systemd}/bin/systemctl restart ${serviceName}.service
+    fi
   '';
 
   guardTable = "${serviceName}-guard";
@@ -484,6 +502,20 @@ in
         RuntimeDirectory = serviceName;
         StateDirectory = serviceName;
         LimitNOFILE = 65536;
+      };
+    };
+
+    systemd.services."${serviceName}-update" = {
+      description = "Refetch the UCC sing-box config for ${cfg.user}; restart ${serviceName} when it changed";
+      after = [
+        "network-online.target"
+        "sops-nix.service"
+      ];
+      wants = [ "network-online.target" ];
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = updateScript;
+        RuntimeDirectory = "${serviceName}-update";
       };
     };
   };
