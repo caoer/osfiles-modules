@@ -31,8 +31,8 @@
 
     # THE central herdr pin for the whole fleet (agent terminal multiplexer),
     # paired with modules/herdr — one binary AND one config.toml everywhere.
-    # Our fork: upstream release + the `[remote].ssh_command` knob the mac's
-    # herdr-eternal client needs, built by the fork's Woodpecker pipeline and
+    # Our fork: upstream release + CI, nix shell completions and a macOS
+    # double-Escape fix, built by the fork's Woodpecker pipeline and
     # served from cache.0xtau.com. Deliberately NO `inputs.nixpkgs.follows`:
     # the cached closure is keyed on the fork's own lock, and a follows here
     # means every host compiles Rust + zig again. osfiles pins the same URL;
@@ -40,14 +40,6 @@
     # version mismatch. To bump: rebase the fork's main on the new upstream
     # tag, push, `nix flake update herdr` here and in osfiles.
     herdr.url = "git+https://git.0xdao.app/caoer115/herdr?ref=main&shallow=1";
-
-    # herdr-eternal — resumable transport for `herdr --remote` (WebSocket,
-    # byte-exact resume across sleep and roaming). Member nodes run its server
-    # via nixosModules.herdr-eternal; the mac's client lives in osfiles.
-    herdr-eternal = {
-      url = "github:Mic92/herdr-eternal";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
 
     # cvim — the fleet's nvim distro (osf.cvim). The same flake the mac
     # installs through `nix profile` and osfiles ships to every server tier,
@@ -143,17 +135,9 @@
         osf-tailscale = import ./modules/net/tailscale.nix;
         osf-gateway = import ./modules/net/gateway;
 
-        # herdr-eternal-server for `herdr --remote` (osf.herdrEternal.*).
-        herdr-eternal = import ./modules/herdr-eternal/herdr-eternal.nixos.nix {
-          herdrEternalFlake = inputs.herdr-eternal;
-          herdrFlake = inputs.herdr;
-        };
-
-        # Default: member-base + agent NixOS modules (ucc, paseo, herdr-eternal).
+        # Default: member-base + agent NixOS modules (ucc, paseo).
         default = import ./modules/_all-nixos.nix {
           tmuxSrc = inputs.tmux-src;
-          herdrEternalFlake = inputs.herdr-eternal;
-          herdrFlake = inputs.herdr;
         };
       };
 
@@ -209,8 +193,6 @@
           # The fleet's tmux. Exposed so .woodpecker.yml can build the exact
           # derivation member-base installs and push it to cache.0xtau.com.
           tmux = pkgs.callPackage ./packages/tmux.nix { inherit (inputs) tmux-src; };
-          # herdr-eternal server + client, re-exported from upstream.
-          herdr-eternal = inputs.herdr-eternal.packages.${system}.default;
         }
         // nixpkgs.lib.optionalAttrs (inputs.hunk.packages ? ${system}) {
           # hunk — central fleet pin, re-exported straight from upstream (no
