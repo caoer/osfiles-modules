@@ -22,7 +22,7 @@
   # nix/npm-deps.hash is for paseo's own nixpkgs pin; consumers that
   # `follows` a different nixpkgs (osfiles, member nodes) must override.
   # Bump when `nix build` reports a new `got:` hash.
-  npmDepsHash ? "sha256-9UWtpZrCdyYyGq3HGNgSpU1+2Imu3oYqtSumq2DtANc=",
+  npmDepsHash ? "sha256-7P+XjGCkoQTuGsnatSIgpQ5eiQ35w/h9RnAio8nwt5w=",
 }:
 let
   pinned = paseo.override { inherit npmDepsHash; };
