@@ -5,6 +5,11 @@ in
 {
   options.osf.git = {
     enable = lib.mkEnableOption "git config";
+    shellAliases = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Install the oh-my-zsh style git aliases below into programs.zsh.shellAliases.";
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -22,7 +27,7 @@ in
       };
     };
 
-    programs.zsh.shellAliases = {
+    programs.zsh.shellAliases = lib.mkIf cfg.shellAliases {
       # Basic
       g = "git";
       ga = "git add";
