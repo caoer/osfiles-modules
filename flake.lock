@@ -485,27 +485,6 @@
         "type": "github"
       }
     },
-    "paseo": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1790633183,
-        "narHash": "sha256-J2hGjkpAHUUe54j+tVxUWRelYGdu5/FRmAWX42Z8tpw=",
-        "owner": "getpaseo",
-        "repo": "paseo",
-        "rev": "c5236c00d8575cdc4423407dd4cb9f111135564e",
-        "type": "github"
-      },
-      "original": {
-        "owner": "getpaseo",
-        "ref": "v0.10.1",
-        "repo": "paseo",
-        "type": "github"
-      }
-    },
     "root": {
       "inputs": {
         "cvim": "cvim",
@@ -517,7 +496,6 @@
         "impermanence": "impermanence",
         "nixpkgs": "nixpkgs_7",
         "nixpkgs-yazi": "nixpkgs-yazi",
-        "paseo": "paseo",
         "sops-nix": "sops-nix",
         "tmux-src": "tmux-src"
       }

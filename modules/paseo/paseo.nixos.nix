@@ -5,7 +5,7 @@
 #
 # Hand-rolled per-user units (paseo-<user>.service) instead of the upstream
 # single-instance NixOS module — uniform across the fleet and multi-user
-# capable. The paseo PACKAGE comes from `osf.paseo.paseoPackage` (the flake's
+# capable. The paseo PACKAGE comes from `osf.paseo.paseoPackage` (the fleet's
 # central pin by default; per-host overridable, R2).
 #
 # config.json is rendered into the store from the CONSUMER-SUPPLIED JSON
@@ -27,10 +27,9 @@
 # Agent providers authenticate as the user — log in once interactively
 # before relying on the daemon (BYOK).
 #
-# Factory form: `{ paseoFlake }: <nixos-module>`. The flake's outputs apply it
-# with its own pinned `paseo`, so consumers need no paseo input. The paseo
-# PACKAGE is overridable per-host via `osf.paseo.paseoPackage` (R2).
-{ paseoFlake }:
+# The paseo PACKAGE defaults to this repo's packages/paseo.nix (upstream's
+# Linux release), so consumers need no paseo input; it is overridable per-host
+# via `osf.paseo.paseoPackage` (R2).
 {
   config,
   lib,
@@ -144,13 +143,10 @@ in
 
     paseoPackage = lib.mkOption {
       type = lib.types.package;
-      default = import ../../packages/paseo.nix {
-        inherit (pkgs) lib stdenv;
-        paseo = paseoFlake.packages.${pkgs.stdenv.hostPlatform.system}.paseo;
-      };
-      defaultText = lib.literalExpression "osf-modules packages/paseo.nix wrap of the pinned paseo flake";
+      default = pkgs.callPackage ../../packages/paseo.nix { };
+      defaultText = lib.literalExpression "osf-modules packages/paseo.nix (upstream Linux release)";
       description = ''
-        Paseo package for the daemon + CLI. Defaults to the flake's central
+        Paseo package for the daemon + CLI. Defaults to the fleet's central
         paseo pin. Override per-host (R2) for an outlier that needs a patched
         build, e.g. `pkgs.paseo-or-flake-pkg.overrideAttrs (…)` — without
         forcing that patch on the rest of the fleet.

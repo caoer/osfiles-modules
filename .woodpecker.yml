@@ -1,7 +1,10 @@
 # Woodpecker CI (ci.0xdao.app) — build the fleet's tmux (packages/tmux.nix,
-# caoer/tmux fork) and push its closure to the public niks3 cache
-# (cache.0xtau.com, R2 CDN). No public cache carries this fork, so without
-# this every host compiles tmux from source on its next deploy.
+# caoer/tmux fork) and paseo (packages/paseo.nix, upstream's Linux release) and
+# push their closures to the public niks3 cache (cache.0xtau.com, R2 CDN). No
+# public cache carries the tmux fork, so without this every host compiles tmux
+# from source on its next deploy. For paseo the pinned path that matters is the
+# release tarball: a fixed-output path, identical under every consumer's
+# nixpkgs, so no host downloads it from GitHub.
 #
 # Hash identity is the point: this builds .#packages.x86_64-linux.tmux, the
 # same derivation modules/member-base.nix installs via pkgs.callPackage on
@@ -53,6 +56,33 @@ steps:
       # Read back exactly what a host reads.
       - |
         for link in ./result ./result-man; do
+          hash=$(basename "$(readlink -f "$link")" | cut -d- -f1)
+          echo "checking https://cache.0xtau.com/$hash.narinfo"
+          nix run nixpkgs#curl -- -fsS "https://cache.0xtau.com/$hash.narinfo" | head -3
+        done
+
+  - name: paseo
+    image: nixos/nix:2.34.8
+    environment:
+      NIKS3_TOKEN:
+        from_secret: niks3_token
+    commands:
+      - |
+        cat >> /etc/nix/nix.conf <<EOF
+        experimental-features = nix-command flakes
+        accept-flake-config = true
+        EOF
+      - nix build '.#packages.x86_64-linux.paseo' '.#packages.x86_64-linux.paseo.src' -L
+      - ./result/bin/paseo --version
+      - umask 077
+      - printf '%s' "$NIKS3_TOKEN" > /tmp/niks3-token
+      - export NIKS3_AUTH_TOKEN_FILE=/tmp/niks3-token
+      - export NIKS3_SERVER_URL=https://niks3.0xtau.com
+      - nix profile install github:Mic92/niks3/780939adecefc2f84be700a6f9ae1cc9385ad240#niks3
+      - niks3 push --pin "osf-paseo-x86_64-linux" ./result
+      - niks3 push --pin "osf-paseo-src" ./result-1
+      - |
+        for link in ./result ./result-1; do
           hash=$(basename "$(readlink -f "$link")" | cut -d- -f1)
           echo "checking https://cache.0xtau.com/$hash.narinfo"
           nix run nixpkgs#curl -- -fsS "https://cache.0xtau.com/$hash.narinfo" | head -3

@@ -5,7 +5,7 @@
 #
 # The hand-rolled equivalent of the NixOS paseo unit, using only serviceConfig
 # directives (no NixOS systemd-module conveniences). The paseo PACKAGE comes
-# from osf.paseoForeign.paseoPackage (the flake pin by default); config.json is
+# from osf.paseoForeign.paseoPackage (the fleet pin by default); config.json is
 # rendered via the shared agentLib.renderPaseoConfig and materialized as a
 # WRITABLE copy by ExecStartPre — identical mechanics to the NixOS path: it is
 # NOT a store symlink (paseo's onboard / config-save writeFileSync's the path,
@@ -21,8 +21,6 @@
 # in-flight switch. New version/config applies on the next deliberate
 # `systemctl restart paseo` or reboot. (The NixOS path uses restartIfChanged=false.)
 #
-# Factory form: `{ paseoFlake }: <module>` — paseo needs paseoFlake for the package.
-{ paseoFlake }:
 {
   config,
   lib,
@@ -71,11 +69,8 @@ in
 
     paseoPackage = lib.mkOption {
       type = lib.types.package;
-      default = import ../../packages/paseo.nix {
-        inherit (pkgs) lib stdenv;
-        paseo = paseoFlake.packages.${pkgs.stdenv.hostPlatform.system}.paseo;
-      };
-      defaultText = lib.literalExpression "osf-modules packages/paseo.nix wrap of the pinned paseo flake";
+      default = pkgs.callPackage ../../packages/paseo.nix { };
+      defaultText = lib.literalExpression "osf-modules packages/paseo.nix (upstream Linux release)";
       description = ''
         Paseo package for the daemon + CLI. Defaults to the flake's central pin;
         override for a patched build (e.g. inputs.agent.packages.<system>.paseo-speech).

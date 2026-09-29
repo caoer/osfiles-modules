@@ -2,7 +2,6 @@
 # Golden base (disko, hardware, network, external-persist) is imported separately
 # via nixosModules.golden-base — it requires closed flake inputs.
 {
-  paseoFlake,
   tmuxSrc,
   herdrEternalFlake,
   herdrFlake,
@@ -13,7 +12,7 @@
     (import ./member-base.nix { inherit tmuxSrc; })
     ./media-tools.nix
     ./ucc/ucc.nixos.nix
-    (import ./paseo/paseo.nixos.nix { inherit paseoFlake; })
+    ./paseo/paseo.nixos.nix
     # Convenience profile: osf.agent.enable → wires ucc + paseo with defaults.
     ./agent/agent.nixos.nix
     ./sing-box-client/sing-box-client.nixos.nix

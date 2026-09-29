@@ -1,91 +1,95 @@
-# packages/paseo.nix — fleet paseo wrapper: keep node-pty's native addon.
+# packages/paseo.nix — the fleet's paseo, taken from upstream's Linux release.
 #
-# Upstream 0.3.0 through 0.4.0 `scripts/trace-daemon.mjs` only copies
-#   node_modules/node-pty/prebuilds/${platform}-${arch}/**
-# but `@getpaseo/server` depends on node-pty@1.2.0-beta.15, which:
-#   - often ships *no* prebuilds in the official tarball (0.3.0-beta.2 had them)
-#   - is resolved under packages/server/node_modules/node-pty
-#   - is rebuilt by the Nix package to build/Release/pty.node, which the
-#     tracer also misses
-# The terminal worker then dies on:
-#   Cannot find module './prebuilds/linux-x64/pty.node'
-#   → "Terminal worker is not running"
+# getpaseo/paseo publishes `Paseo-<v>-x64.tar.gz` on every GitHub release: the
+# Electron desktop bundle, whose resources/app.asar carries the complete daemon
+# and CLI (@getpaseo/server, @getpaseo/cli and their node_modules) and whose
+# app.asar.unpacked carries the native addons (node-pty, sherpa-onnx,
+# msgpackr-extract). All three addons are N-API, so nixpkgs' node runs the
+# bundle headless — no Electron, no display, no npm install, no npmDepsHash.
 #
-# This wrapper copies whatever pty.node `npm rebuild node-pty` produced into
-# every node-pty tree the daemon can resolve, and fails the build if none
-# exists. Apply once at the flake pin (packages.paseo + module defaults).
+# Build: extract the asar (paseo-asar-extract.cjs), patchelf the addons against
+# libstdc++, wrap node with the same two entry points the source build had:
+#   bin/paseo-server  supervisor-entrypoint.js (systemd ExecStart)
+#   bin/paseo         the CLI
+# The desktop's web UI (resources/app-dist) is placed where the server looks
+# for its bundled web UI (dist/server/web-ui); it is served only when
+# features.webUi is enabled.
+#
+# Upstream ships Linux x64 only, so this package is x86_64-linux only.
+#
+# Bump: set `version`, then `nix store prefetch-file <url>` for `hash`.
+# The tarball is a fixed-output path, identical under every nixpkgs, and CI
+# (.woodpecker.yml) pins it and the built package in cache.0xtau.com, so no
+# host downloads from GitHub.
 {
   lib,
   stdenv,
-  paseo,
-  # fetchNpmDeps hash is nixpkgs-revision-sensitive. Upstream's
-  # nix/npm-deps.hash is for paseo's own nixpkgs pin; consumers that
-  # `follows` a different nixpkgs (osfiles, member nodes) must override.
-  # Bump when `nix build` reports a new `got:` hash.
-  npmDepsHash ? "sha256-7P+XjGCkoQTuGsnatSIgpQ5eiQ35w/h9RnAio8nwt5w=",
+  fetchurl,
+  nodejs_22,
+  asar,
+  makeWrapper,
+  autoPatchelfHook,
 }:
 let
-  pinned = paseo.override { inherit npmDepsHash; };
-  plat =
-    if stdenv.hostPlatform.isLinux && stdenv.hostPlatform.isx86_64 then
-      "linux-x64"
-    else if stdenv.hostPlatform.isLinux && stdenv.hostPlatform.isAarch64 then
-      "linux-arm64"
-    else if stdenv.hostPlatform.isDarwin && stdenv.hostPlatform.isAarch64 then
-      "darwin-arm64"
-    else if stdenv.hostPlatform.isDarwin && stdenv.hostPlatform.isx86_64 then
-      "darwin-x64"
-    else
-      throw "paseo: unsupported platform ${stdenv.hostPlatform.system} for node-pty";
+  nodejs = nodejs_22;
 in
-pinned.overrideAttrs (old: {
-  postInstall = ''
-    ${old.postInstall or ""}
-    set -eu
-    shopt -s globstar nullglob
-    src=""
-    for f in \
-      packages/server/node_modules/node-pty/prebuilds/${plat}/pty.node \
-      packages/server/node_modules/node-pty/build/Release/pty.node \
-      node_modules/node-pty/prebuilds/${plat}/pty.node \
-      node_modules/node-pty/build/Release/pty.node; do
-      if [ -f "$f" ]; then src="$f"; break; fi
-    done
-    if [ -z "$src" ]; then
-      src="$(find . -name pty.node -not -path './.*' | head -n 1 || true)"
-    fi
-    if [ -z "''${src:-}" ] || [ ! -f "$src" ]; then
-      echo "paseo: node-pty pty.node missing after rebuild (platform=${plat})" >&2
-      find . -path '*node-pty*' \( -name package.json -o -name '*.node' \) >&2 || true
-      exit 1
-    fi
+stdenv.mkDerivation rec {
+  pname = "paseo";
+  version = "0.10.1";
 
-    # If the tracer only kept the hoisted copy, also place one where the
-    # worker resolves (packages/server/node_modules/node-pty).
-    nested="$out/lib/paseo/packages/server/node_modules/node-pty"
-    if [ ! -d "$nested" ]; then
-      for cand in $out/lib/paseo/node_modules/node-pty; do
-        if [ -d "$cand" ]; then
-          mkdir -p "$(dirname "$nested")"
-          cp -a "$cand" "$nested"
-          break
-        fi
-      done
-    fi
+  src = fetchurl {
+    url = "https://github.com/getpaseo/paseo/releases/download/v${version}/Paseo-${version}-x64.tar.gz";
+    hash = "sha256-7dPhl36rxn725EBUgZrh7OZXixzdZYpMdj/TQBso2CA=";
+  };
 
-    injected=0
-    for dest in $out/lib/paseo/**/node-pty; do
-      [ -d "$dest" ] || continue
-      mkdir -p "$dest/prebuilds/${plat}" "$dest/build/Release"
-      cp -a "$src" "$dest/prebuilds/${plat}/pty.node"
-      cp -a "$src" "$dest/build/Release/pty.node"
-      injected=1
+  nativeBuildInputs = [
+    nodejs
+    makeWrapper
+    autoPatchelfHook
+  ];
+  buildInputs = [ stdenv.cc.cc.lib ];
+
+  dontConfigure = true;
+  dontBuild = true;
+  dontStrip = true;
+
+  installPhase = ''
+    runHook preInstall
+
+    lib=$out/lib/paseo
+    NODE_PATH=${asar}/lib/node_modules node ${./paseo-asar-extract.cjs} resources/app.asar $lib
+
+    # Linux x64 only: drop other platforms' prebuilds and dirs left empty by
+    # entries upstream strips from the release.
+    find $lib -path '*/prebuilds/*' -prune -type d ! -name linux-x64 -exec rm -rf {} +
+    find $lib -name '*.musl.node' -delete
+    find $lib -depth -type d -empty -delete
+
+    mkdir -p $lib/node_modules/@getpaseo/server/dist/server
+    cp -r resources/app-dist $lib/node_modules/@getpaseo/server/dist/server/web-ui
+
+    for pty in $lib/node_modules/node-pty/prebuilds/linux-x64/pty.node; do
+      [ -f "$pty" ] || { echo "paseo: node-pty linux-x64 pty.node missing from the release" >&2; exit 1; }
     done
-    if [ "$injected" -eq 0 ]; then
-      echo "paseo: no node-pty directory in $out; tracer omitted the package" >&2
-      find "$out/lib/paseo" -iname '*pty*' >&2 || true
-      exit 1
-    fi
-    echo "paseo: injected $src into $injected node-pty tree(s) (${plat})"
+
+    mkdir -p $out/bin
+    # PASEO_NODE_ENV is paseo's runtime mode; NODE_ENV belongs to spawned agents.
+    makeWrapper ${nodejs}/bin/node $out/bin/paseo-server \
+      --add-flags "$lib/node_modules/@getpaseo/server/dist/scripts/supervisor-entrypoint.js" \
+      --set PASEO_NODE_ENV production
+    makeWrapper ${nodejs}/bin/node $out/bin/paseo \
+      --add-flags "$lib/node_modules/@getpaseo/cli/dist/index.js" \
+      --set PASEO_NODE_ENV production
+
+    runHook postInstall
   '';
-})
+
+  meta = {
+    description = "Self-hosted daemon for Claude Code, Codex, and OpenCode (upstream Linux release)";
+    homepage = "https://github.com/getpaseo/paseo";
+    license = lib.licenses.agpl3Plus;
+    mainProgram = "paseo";
+    platforms = [ "x86_64-linux" ];
+    sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
+  };
+}

@@ -29,18 +29,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # THE central paseo pin for the whole fleet. Transferred from agent-flake.
-    # One bump here reaches every consumer that imports this flake.
-    # Pin a stable release tag (upstream also tags -beta.N — skip those) —
-    # floating `main` shipped 0.3.0 without node-pty prebuilds (terminal
-    # worker crash). Wrapper in packages/paseo.nix asserts/injects pty.node
-    # so a future tracer regression fails the build; bump its npmDepsHash
-    # alongside this url on every version bump.
-    paseo = {
-      url = "github:getpaseo/paseo/v0.10.1";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     # THE central herdr pin for the whole fleet (agent terminal multiplexer),
     # paired with modules/herdr — one binary AND one config.toml everywhere.
     # Our fork: upstream release + the `[remote].ssh_command` knob the mac's
@@ -106,7 +94,6 @@
     inputs@{
       self,
       nixpkgs,
-      paseo,
       cvim,
       ...
     }:
@@ -164,7 +151,6 @@
 
         # Default: member-base + agent NixOS modules (ucc, paseo, herdr-eternal).
         default = import ./modules/_all-nixos.nix {
-          paseoFlake = paseo;
           tmuxSrc = inputs.tmux-src;
           herdrEternalFlake = inputs.herdr-eternal;
           herdrFlake = inputs.herdr;
@@ -173,7 +159,7 @@
 
       # Foreign (non-NixOS, system-manager) modules.
       systemManagerModules = {
-        default = import ./modules/_all-sm.nix { paseoFlake = paseo; };
+        default = import ./modules/_all-sm.nix;
       };
 
       # HM modules: all tool modules (opt-in via osf.<tool>.enable) + presets.
@@ -214,13 +200,8 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          paseoPkg = pkgs.callPackage ./packages/paseo.nix {
-            paseo = paseo.packages.${system}.paseo;
-          };
         in
         {
-          paseo = paseoPkg;
-          default = paseoPkg;
           kimi-code = pkgs.callPackage ./packages/kimi-code.nix { };
           # Prebuilt vendor binary, all four systems — exposed so a host can
           # reference it directly and so CI can push it to the cache.
@@ -238,7 +219,11 @@
           # Guard is upstream's system set, not ours — see the input comment.
           hunk = inputs.hunk.packages.${system}.default;
         }
-        // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
+        // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") rec {
+          # THE central paseo pin for the whole fleet — upstream's Linux x64
+          # release; bump `version` + `hash` in packages/paseo.nix.
+          paseo = pkgs.callPackage ./packages/paseo.nix { };
+          default = paseo;
           codex = pkgs.callPackage ./packages/codex.nix { };
           metacubexd = pkgs.callPackage ./packages/metacubexd.nix { };
           watchdog = pkgs.callPackage ./packages/watchdog.nix { };

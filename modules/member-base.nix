@@ -3,8 +3,8 @@
 # Combines: base settings (nix, sshd, fail2ban, nftables, zsh), CLI tools,
 # and docker. All values use lib.mkDefault so per-owner repos can override.
 #
-# tmuxSrc is closed over by flake.nix (same shape as paseo.nixos.nix's
-# paseoFlake) so the tmux below is the fork, not nixpkgs' stock build.
+# tmuxSrc is closed over by flake.nix so the tmux below is the fork, not
+# nixpkgs' stock build.
 { tmuxSrc }:
 {
   config,
