@@ -1,0 +1,72 @@
+paseo: a running daemon reads as not running after the wall clock is stepped.
+
+@getpaseo/server dist/.../pid-lock.js (src/server/pid-lock.ts at v0.10.1:58-62, from
+upstream #5277) treats a lock as abandoned when its startedAt precedes
+`Date.now() - os.uptime()`. A cloud-hypervisor snapshot restore keeps the guest's
+CLOCK_BOOTTIME where it stopped, chrony then steps the wall clock over the time on
+disk, and the derived boot instant jumps past every lock written before the pause:
+`paseo agent ls` answers DAEMON_NOT_RUNNING while the daemon runs.
+
+The lock now carries the kernel's boot id and is compared by it on Linux; a lock
+without one (written before this patch) keeps upstream's check.
+
+--- a/pid-lock.js
++++ b/pid-lock.js
+@@ -1,4 +1,5 @@
+ import { open, readFile, stat, unlink, utimes } from "node:fs/promises";
++import { readFileSync } from "node:fs";
+ import { ensurePrivateDirectory } from "./private-files.js";
+ import { join } from "node:path";
+ import { hostname, uptime } from "node:os";
+@@ -12,6 +13,7 @@
+     serverId: z.string().nullable().optional(),
+     desktopManaged: z.boolean().optional(),
+     heartbeat: z.literal(true).optional(),
++    bootId: z.string().optional(),
+ });
+ function parsePidLockInfo(raw) {
+     const result = pidLockInfoSchema.safeParse(raw);
+@@ -43,8 +45,24 @@
+ // about a second of error. This covers that resolution and nothing more: every extra second
+ // is a window in which a lock written just before a reboot still reads as current.
+ const BOOT_INSTANT_TOLERANCE_MS = 5000;
+-function precedesThisBoot(startedAt) {
+-    const stamped = Date.parse(startedAt);
++// Linux names every boot with a random UUID. `Date.now() - uptime()` is the boot instant only
++// while the wall clock has not been stepped since boot: after a VM resumes from a snapshot,
++// or NTP's first sync, chrony steps the wall clock forward while CLOCK_BOOTTIME (uptime) does
++// not count the gap, so every lock written before the step reads as written before this boot.
++// The boot id moves on a reboot and on nothing else.
++function readBootId() {
++    try {
++        return readFileSync("/proc/sys/kernel/random/boot_id", "utf-8").trim() || undefined;
++    }
++    catch {
++        return undefined;
++    }
++}
++const BOOT_ID = readBootId();
++function precedesThisBoot(lock) {
++    if (lock.bootId !== undefined && BOOT_ID !== undefined)
++        return lock.bootId !== BOOT_ID;
++    const stamped = Date.parse(lock.startedAt);
+     if (Number.isNaN(stamped))
+         return false;
+     return stamped < Date.now() - uptime() * 1000 - BOOT_INSTANT_TOLERANCE_MS;
+@@ -58,7 +76,7 @@
+  * however alive its PID looks.
+  */
+ export function isPidLockOwnerRunning(lock) {
+-    if (precedesThisBoot(lock.startedAt))
++    if (precedesThisBoot(lock))
+         return false;
+     return isPidRunning(lock.pid);
+ }
+@@ -180,6 +198,7 @@
+         uid: process.getuid?.() ?? 0,
+         listen,
+         heartbeat: true,
++        ...(BOOT_ID !== undefined ? { bootId: BOOT_ID } : {}),
+         ...(process.env.PASEO_DESKTOP_MANAGED === "1" ? { desktopManaged: true } : {}),
+     };
+     await writeNewPidLock(pidPath, lockInfo);
