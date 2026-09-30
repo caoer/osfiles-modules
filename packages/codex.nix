@@ -5,16 +5,10 @@
 # Two tarballs per release: the CLI and codex-code-mode-host. Codex resolves
 # the host beside its own binary and fails closed without it ("Code Mode is
 # unavailable … host executable was not found").
-#
-# The wrapper turns off `daemon_auto_start`. With it on, the TUI hands its
-# session to a self-updating app-server daemon that needs a mutable package
-# layout (codex-package.json, codex-path/, codex-resources/); a store path has
-# none, so a bare `codex` exits "this CLI has no complete local package".
 {
   lib,
   stdenv,
   fetchurl,
-  makeWrapper,
 }:
 
 let
@@ -51,8 +45,6 @@ stdenv.mkDerivation {
 
   sourceRoot = ".";
 
-  nativeBuildInputs = [ makeWrapper ];
-
   dontBuild = true;
   dontConfigure = true;
 
@@ -62,7 +54,6 @@ stdenv.mkDerivation {
     install -m755 codex-${asset.target} $out/bin/codex
     tar xzf ${codeModeHost}
     install -m755 codex-code-mode-host-${asset.target} $out/bin/codex-code-mode-host
-    wrapProgram $out/bin/codex --add-flags "-c features.daemon_auto_start=false"
     runHook postInstall
   '';
 
