@@ -180,7 +180,11 @@ in
       ];
       sessionVariables.UCC_HOME = "${home}/.local/share/ucc";
 
-      packages = lib.optional cfg.codex.enable cfg.codex.package;
+      # bubblewrap: codex's Linux sandbox looks for bwrap on PATH and only
+      # falls back to its bundled copy with an error in the daemon log.
+      packages = lib.optionals cfg.codex.enable (
+        [ cfg.codex.package ] ++ lib.optional pkgs.stdenv.isLinux pkgs.bubblewrap
+      );
 
       file = {
         # claude = configured ucc launcher. Dangling until the ucc

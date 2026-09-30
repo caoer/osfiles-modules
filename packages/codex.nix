@@ -1,10 +1,13 @@
-# Codex — OpenAI Codex CLI. Prebuilt static musl binaries from GitHub releases.
-# Pinned ahead of nixpkgs (which lags upstream). Bump: update version + both
-# sha256 (nix-prefetch-url each tarball URL).
+# Codex — OpenAI Codex CLI, the packaged build from npm (@openai/codex
+# <version>-<platform>). Pinned ahead of nixpkgs (which lags upstream). Bump:
+# update version + sha256 (nix-prefetch-url the tarball URL).
 #
-# Two tarballs per release: the CLI and codex-code-mode-host. Codex resolves
-# the host beside its own binary and fails closed without it ("Code Mode is
-# unavailable … host executable was not found").
+# The package is installed whole under $out/lib/codex: codex-package.json,
+# bin/ (codex, codex-code-mode-host), codex-path/ (rg) and codex-resources/
+# (bwrap, zsh, voice). Codex locates all of them from its own executable; the
+# TUI's app-server daemon refuses to start without codex-package.json ("this
+# CLI has no complete local package"), and Code Mode fails closed without the
+# host binary. The bytes are upstream's: no strip, no patchelf.
 {
   lib,
   stdenv,
@@ -16,9 +19,9 @@ let
 
   assets = {
     "x86_64-linux" = {
+      npmPlatform = "linux-x64";
       target = "x86_64-unknown-linux-musl";
-      sha256 = "1shn2qw15dldy9096w5k443zpw3hsfny33pgn2csfhbd4h6nnn16";
-      codeModeHostSha256 = "03v3yz3qmi027vv1rmn6xc6scg9qc40br3i0s4l0gv94gd50qszv";
+      sha256 = "1fif72qrnvvykadcqxiqyl8qjnh472a35jwzxx6bkp2vnigv79l4";
     };
   };
 
@@ -26,34 +29,29 @@ let
     assets.${stdenv.hostPlatform.system}
       or (throw "codex: unsupported platform ${stdenv.hostPlatform.system}");
 
-  release = "https://github.com/openai/codex/releases/download/rust-v${version}";
-
-  codeModeHost = fetchurl {
-    url = "${release}/codex-code-mode-host-${asset.target}.tar.gz";
-    sha256 = asset.codeModeHostSha256;
-  };
-
 in
 stdenv.mkDerivation {
   pname = "codex";
   inherit version;
 
   src = fetchurl {
-    url = "${release}/codex-${asset.target}.tar.gz";
+    url = "https://registry.npmjs.org/@openai/codex/-/codex-${version}-${asset.npmPlatform}.tgz";
     inherit (asset) sha256;
   };
 
-  sourceRoot = ".";
+  sourceRoot = "package/vendor/${asset.target}";
 
   dontBuild = true;
   dontConfigure = true;
+  dontStrip = true;
+  dontPatchELF = true;
 
   installPhase = ''
     runHook preInstall
-    mkdir -p $out/bin
-    install -m755 codex-${asset.target} $out/bin/codex
-    tar xzf ${codeModeHost}
-    install -m755 codex-code-mode-host-${asset.target} $out/bin/codex-code-mode-host
+    test -f codex-package.json
+    mkdir -p $out/lib/codex $out/bin
+    cp -a . $out/lib/codex/
+    ln -s ../lib/codex/bin/codex $out/bin/codex
     runHook postInstall
   '';
 
