@@ -122,7 +122,7 @@ in
   # installer, set back here, and flip on alternating runs. The daemon's own
   # verb — `config generate`, the same per-profile call the installer makes —
   # runs after the merge, so a conflicting key can only ever lose, and on any
-  # event a nix-declared registrar (moshi) names, the daemon's entry comes back
+  # hooks event nix names, the daemon's entry comes back
   # in front of it. A missing or failing daemon is reported and non-fatal.
   mkSettingsSyncScript =
     {

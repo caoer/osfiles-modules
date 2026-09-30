@@ -161,7 +161,7 @@ in
         .claude.json. Never declare a key the installer forces (theme, tui,
         askUserQuestionTimeout, permissions mode, timeout env) nor `hooks` /
         `statusLine` — those flip on alternating runs. A hooks event named here
-        (moshi) replaces that event's array; the daemon puts its own entry back
+        replaces that event's array; the daemon puts its own entry back
         in front. The Foreign / HM-standalone analogue of the NixOS path's
         agent-claude-settings-<user> systemd unit (which owns this deploy on
         NixOS hosts — leave this null there to avoid a double-apply). The ucc

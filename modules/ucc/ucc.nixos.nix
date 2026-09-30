@@ -142,7 +142,7 @@ let
         default = { };
         description = ''
           Per-user overrides recursively merged over the module's base
-          overrides (baseClaudeSettings: model, effort, plugins, moshi hooks).
+          overrides (baseClaudeSettings: model, effort, plugins).
           agent-claude-settings-<user> deep-merges the result onto every UCC
           profile's settings.json and then runs the daemon's `config generate`,
           so the installer's policy stays on top. Never declare a key the
@@ -156,45 +156,6 @@ let
         default = true;
         description = "Install the OpenAI codex CLI (nixpkgs) for this user (paseo's native codex provider drives it).";
       };
-
-      moshi.enable = lib.mkOption {
-        type = lib.types.bool;
-        default = false;
-        description = ''
-          Add Moshi's Claude Code hooks to this user's profiles, so agent
-          activity reaches the Moshi phone app (approvals, task completion,
-          Chat View). Off by default: it points every profile at a daemon that
-          talks to a third-party cloud, which should be a deliberate per-user
-          choice.
-
-          The hook entries are GENERATED HERE rather than by the vendor's
-          `moshi-hook install`, for two independent reasons:
-            1. `install` writes ~/.claude/settings.json. UCC profiles run under
-               CLAUDE_CONFIG_DIR=~/.local/share/ucc/profiles/<name>, so it
-               would not reach a single profile.
-            2. agent-claude-settings-<user> rewrites every profile's
-               settings.json wholesale on each rebuild, so anything `install`
-               wrote would be erased at the next deploy.
-          Generating them keeps nix the single source of truth and covers all
-          profiles at once. Moshi's entries sit ALONGSIDE the ccc-statusd ones
-          — Claude runs every matching hook — so the daemon and the fleet's own
-          hook system coexist.
-
-          Needs the daemon: set osf.moshi.enable and add this user there too,
-          otherwise the hooks fire into a socket nobody is listening on.
-        '';
-      };
-
-      moshi.package = lib.mkOption {
-        type = lib.types.package;
-        default = pkgs.callPackage ../../packages/moshi-hook.nix { };
-        defaultText = lib.literalExpression "osf-modules' pinned packages/moshi-hook.nix";
-        description = ''
-          moshi-hook package whose store path is baked into the hook commands.
-          Keep it the same package osf.moshi.package runs — the hooks and the
-          daemon speak a versioned socket protocol.
-        '';
-      };
     };
   });
 
@@ -202,38 +163,10 @@ let
   # installer writes. The policy, the daemon's hooks and statusLine are the
   # installer's (lib.nix mkSettingsSyncScript). ---
 
-  # One Moshi hook entry. This mirrors, field for field, what `moshi-hook
-  # install --target claude` writes — captured by running the vendor installer
-  # against a throwaway HOME and diffing the result. Keep it that way: the
-  # daemon dispatches on the event name and matcher it expects to see.
-  # `async` is Claude's fire-and-forget flag; moshi marks everything async
-  # except PermissionRequest, which must block to carry a decision back.
-  moshiHook =
-    moshiBin:
-    {
-      matcher ? null,
-      async ? true,
-    }:
-    [
-      (
-        {
-          hooks = [
-            {
-              type = "command";
-              command = "'${moshiBin}' claude-hook";
-              inherit async;
-            }
-          ];
-        }
-        // lib.optionalAttrs (matcher != null) { inherit matcher; }
-      )
-    ];
-
   baseClaudeSettings =
-    name: ucfg:
+    name:
     let
       uccData = "${homeOf name}/.local/share/ucc";
-      mhook = moshiHook (lib.getExe ucfg.moshi.package);
     in
     {
       env = {
@@ -264,24 +197,6 @@ let
       model = "claude-opus-5-5[1m]";
       enableWorkflows = false;
       workflowKeywordTriggerEnabled = false;
-    }
-    # Moshi is the one registrar with no per-profile installer of its own
-    # (`moshi-hook install` reaches only ~/.claude/settings.json), so its
-    # entries are declared here, on the events it consumes. Each named event's
-    # array is replaced by these entries; the daemon's `config generate` then
-    # puts its own entry back in front. On PermissionRequest that order is the
-    # point: ccc-statusd answers first (CCC_TOOL_USE_ALLOW_ALL auto-approve),
-    # moshi's synchronous entry carries the phone's decision after it.
-    // lib.optionalAttrs ucfg.moshi.enable {
-      hooks = {
-        PermissionRequest = mhook { async = false; };
-        PostToolUse = mhook { matcher = "AskUserQuestion"; } ++ mhook { matcher = "ExitPlanMode"; };
-        PreToolUse = mhook { matcher = "AskUserQuestion"; } ++ mhook { matcher = "ExitPlanMode"; };
-        Stop = mhook { };
-        UserPromptSubmit = mhook { };
-        SessionStart = mhook { };
-        SessionEnd = mhook { };
-      };
     };
 
   # --- UCC installer — shared builder (modules/ucc/lib.nix). The NixOS and
@@ -305,7 +220,7 @@ let
       inherit name;
       home = homeOf name;
       settingsFile = pkgs.writeText "agent-claude-settings-${name}.json" (
-        builtins.toJSON (lib.recursiveUpdate (baseClaudeSettings name ucfg) ucfg.claudeSettings)
+        builtins.toJSON (lib.recursiveUpdate (baseClaudeSettings name) ucfg.claudeSettings)
       );
     };
 
