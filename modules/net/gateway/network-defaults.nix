@@ -36,13 +36,6 @@ lib.mkMerge [
           ];
           desc = "sing-box DNS";
         };
-        # easytier-rpc: internal (allow=[] -> no rule, loopback only)
-        easytier-rpc = {
-          port = 15888;
-          proto = "tcp";
-          allow = [ ];
-          desc = "EasyTier RPC";
-        };
         # EasyTier listener ports: module-owned (modules/nixos/easytier.nix).
         # Derived from cfg.listeners URIs — no per-host/per-gateway duplication.
       };
