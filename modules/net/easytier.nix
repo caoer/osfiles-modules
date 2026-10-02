@@ -359,10 +359,13 @@ in
           # publisher, so restarting every backbone on each leaf add would flap
           # the mesh for zero reachability gain. Restarting the bootstrap hubs
           # (the dial-in anchors for new defaultPeers leaves) is sufficient.
-          # Foreign bootstrap hubs (megabox, usca9-1000) get the equivalent from
-          # the osf CLI — pushForeignSecrets() restarts easytier after pushing
-          # secrets (cli/src/commands/rebuild.ts) — so only the NixOS path needs
-          # this declarative hook.
+          # Foreign hosts take this secret through the osf CLI instead
+          # (osfiles modules/foreign/easytier.nix, which declares no
+          # restartUnits for it). There easytier restarts after a DB change only
+          # through the CLI's legacy restart set, which applies only when no
+          # secret on the host declares restartUnits (secretRestartUnits in
+          # osfiles cli/src/commands/rebuild.ts). A Foreign bootstrap hub whose
+          # other secrets declare restartUnits needs a manual restart.
           restartUnits = lib.optionals isBootstrapPeer [ "easytier.service" ];
         };
         systemd.tmpfiles.rules = [ "d /var/lib/easytier 0700 root root -" ];
