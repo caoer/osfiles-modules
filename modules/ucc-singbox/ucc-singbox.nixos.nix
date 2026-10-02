@@ -1,8 +1,13 @@
 # modules/ucc-singbox/ucc-singbox.nixos.nix — per-UCC-profile sing-box routing.
 #
-# Fetches a complete sing-box config from the mesh-network API at activation
-# time. The API resolves the token's profile→server mappings, builds
-# process_path_regex route rules, and returns a ready-to-run config.
+# Fetches a complete sing-box config from the mesh-network API. The API
+# resolves the token's profile→server mappings, builds process_path_regex
+# route rules, and returns a ready-to-run config. The host renders it, checks
+# it and installs it in the unit's StateDirectory with the raw answer beside
+# it. The router fetches on its first start after boot and starts on the
+# stored config when that fetch fails; afterwards each revision the mesh
+# Worker pushes down the -fleet socket runs the -update, which restarts the
+# router only when the raw answer changed.
 #
 # Three modes:
 #   tun-us        — direct: UCC profile processes proxy, everything else DIRECT.
@@ -47,7 +52,12 @@ let
 
   inst = cfg.instanceName;
   serviceName = "sing-box-ucc-${inst}";
-  runtimeConfig = "/run/${serviceName}/config.json";
+
+  # The installed config, the raw API answer it was rendered from, and the
+  # renderer that rendered it. Kept across reboots: a start whose fetch fails
+  # runs on what is here.
+  stateDir = "/var/lib/${serviceName}";
+  liveConfig = "${stateDir}/config.json";
 
   userHome = config.users.users.${cfg.user}.home;
 
@@ -56,22 +66,21 @@ let
   # (LAN proxy + final route change) is handled in post-processing.
   apiPreset = if isStrict then "tun-us" else cfg.preset;
 
-  # --- Fetch + post-process script ---
+  fleetUrl = "${
+    lib.replaceStrings [ "https://" "http://" ] [ "wss://" "ws://" ] cfg.apiUrl
+  }/fleet/ws";
+
+  # --- Fetch: the raw API answer to $1 ---
   fetchScript = pkgs.writeShellScript "${serviceName}-fetch" ''
     set -eu
     umask 077
-    # Output path: the unit start writes the live config; the -update unit
-    # writes a candidate beside it to compare.
-    out="''${1:-${runtimeConfig}}"
+    out="$1"
 
     token="$(cat "${config.sops.secrets.${cfg.tokenSecret}.path}")"
     if [ -z "$token" ]; then
       echo "${serviceName}: empty token" >&2
       exit 1
     fi
-
-    target_uid="$(${pkgs.coreutils}/bin/id -u ${cfg.user})"
-    extra_uids="$(${pkgs.coreutils}/bin/printf '%s\n' ${lib.concatMapStringsSep " " (u: "\"$(${pkgs.coreutils}/bin/id -u ${u})\"") cfg.extraUsers})"
 
     url="${cfg.apiUrl}/config/$token?type=singbox&features=${lib.concatStringsSep "," cfg.features}&preset=${apiPreset}&port=-1&env.HOME=${userHome}"
     ${lib.optionalString (cfg.extraQueryParams != "") ''url="$url&${cfg.extraQueryParams}"''}
@@ -83,15 +92,28 @@ let
       trap '${pkgs.iproute2}/bin/ip route del default via ${cfg.bootstrapGateway} metric 9999 2>/dev/null || true' EXIT
     ''}
 
-    echo "${serviceName}: fetching config from API (preset=${apiPreset})"
-    raw=$(${pkgs.curl}/bin/curl -fsSL --max-time 30 "$url")
+    echo "${serviceName}: fetching config from API (preset=${apiPreset})" >&2
+    # The URL carries the token, so it reaches curl on stdin, not argv.
+    printf 'url = "%s"\n' "$url" \
+      | ${pkgs.curl}/bin/curl -fsSL --max-time 30 --config - -o "$out"
 
-    # Validate it's JSON before processing
-    echo "$raw" | ${pkgs.jq}/bin/jq empty 2>/dev/null || {
+    ${pkgs.jq}/bin/jq empty "$out" 2>/dev/null || {
       echo "${serviceName}: API returned invalid JSON" >&2
-      echo "$raw" | head -5 >&2
+      head -c 300 "$out" >&2
+      echo >&2
       exit 1
     }
+  '';
+
+  # --- Render: raw API answer $1 → checked sing-box config $2 ---
+  renderScript = pkgs.writeShellScript "${serviceName}-render" ''
+    set -eu
+    umask 077
+    raw="$1"
+    out="$2"
+
+    target_uid="$(${pkgs.coreutils}/bin/id -u ${cfg.user})"
+    extra_uids="$(${pkgs.coreutils}/bin/printf '%s\n' ${lib.concatMapStringsSep " " (u: "\"$(${pkgs.coreutils}/bin/id -u ${u})\"") cfg.extraUsers})"
 
     # Post-process step 1: TUN fields
     # - Root (uid 0): omit include_uid so TUN captures ALL users' traffic
@@ -133,7 +155,7 @@ let
       | ${pkgs.gnused}/bin/sed 's/@.*//' \
       | ${pkgs.gnugrep}/bin/grep -E '^(docker[0-9]*|br-|veth)' || true)"
 
-    echo "$raw" | ${pkgs.jq}/bin/jq \
+    ${pkgs.jq}/bin/jq \
       --argjson uid "$target_uid" \
       --arg extra_uids "$extra_uids" \
       --arg cidrs "$host_cidrs" \
@@ -163,7 +185,7 @@ let
                 .action != "sniff" and .action != "hijack-dns"
               )))
           )
-      ' > "$out"
+      ' "$raw" > "$out"
     echo "${serviceName}: tun exclude addrs=$(echo "$host_cidrs" | tr '\n' ' ')"
 
     ${lib.optionalString isStrict ''
@@ -184,25 +206,174 @@ let
       ' "$out" > "$out.tmp" && mv "$out.tmp" "$out"
     ''}
 
+    ${lib.concatMapStrings (hook: ''
+      ${hook} "$out"
+    '') cfg.postFetch}
     ${singboxPkg}/bin/sing-box check -c "$out"
 
     profiles=$(${pkgs.jq}/bin/jq '[.route.rules // [] | .[] | select(.process_path_regex)] | length' "$out")
-    echo "${serviceName}: ready — $profiles profile route(s), uid=$target_uid${lib.optionalString isStrict ", strict mode (lan-proxy → ${cfg.lanProxy.server}:${toString cfg.lanProxy.port})"}"
+    echo "${serviceName}: rendered — $profiles profile route(s), uid=$target_uid${lib.optionalString isStrict ", strict mode (lan-proxy → ${cfg.lanProxy.server}:${toString cfg.lanProxy.port})"}"
   '';
 
-  # Manual refresh (systemctl start <serviceName>-update): fetch a candidate
-  # config and restart the router only when it differs from the live one — a
-  # profile added on the UCC config page reaches this host without a rebuild.
-  updateScript = pkgs.writeShellScript "${serviceName}-update" ''
+  # --- Config: `start` (the main unit's ExecStartPre) and `update [result]` ---
+  #
+  # start  — on the first start after boot (or with nothing stored) fetch and
+  #          render; a failed fetch renders the stored fetch, a failed render
+  #          keeps the stored config. A later start renders only when the
+  #          renderer changed (a rebuild), from the stored fetch, offline.
+  # update — fetch; when the raw answer equals the stored one and the renderer
+  #          is the same, report `unchanged` and touch nothing. Otherwise
+  #          render, `sing-box check`, install, restart the router, report
+  #          `applied`. Any failure reports `failed <one line>`, exits non-zero
+  #          and leaves the installed config as it was.
+  #
+  # The compare is raw fetch to raw fetch, so what the renderer and the
+  # postFetch hooks add (this boot's addresses, a host's rewrite) never reads
+  # as a change. The result word goes to the file named by $2 (the fleet
+  # socket's answer).
+  configScript = pkgs.writeShellScript "${serviceName}-config" ''
     set -eu
-    next=/run/${serviceName}-update/config.json
-    ${fetchScript} "$next"
-    if ${pkgs.diffutils}/bin/cmp -s "$next" ${runtimeConfig}; then
-      echo "${serviceName}: config unchanged"
-    else
-      echo "${serviceName}: config changed — restarting ${serviceName}"
-      ${pkgs.systemd}/bin/systemctl restart ${serviceName}.service
-    fi
+    umask 077
+    mode="''${1:?usage: start | update [result-file]}"
+    result="''${2:-}"
+    state=${stateDir}
+    renderer=${renderScript}
+    # What rendered the installed config; a rebuild that changes it re-renders.
+    stamp="$renderer"
+
+    say() { echo "${serviceName}: $*" >&2; }
+    report() { if [ -n "$result" ]; then printf '%s\n' "$*" > "$result"; fi; }
+    fail() { say "$*"; report "failed $*"; exit 1; }
+
+    mkdir -p -m 0700 "$state"
+    exec 9>"$state/.lock"
+    ${pkgs.util-linux}/bin/flock 9
+    work="$(mktemp -d "$state/.next.XXXXXX")"
+    trap 'rm -rf "$work"' EXIT
+
+    # Each step runs as its own script (set -e holds inside it); its stderr
+    # reaches the journal, and its last line is the failure's one line.
+    fetch() {
+      if ${fetchScript} "$work/raw.json" 2>"$work/err"; then
+        cat "$work/err" >&2
+      else
+        cat "$work/err" >&2
+        return 1
+      fi
+    }
+    render() {
+      if "$renderer" "$work/raw.json" "$work/config.json" >&2 2>"$work/err"; then
+        cat "$work/err" >&2
+      else
+        cat "$work/err" >&2
+        return 1
+      fi
+    }
+    lastline() { tail -n 1 "$work/err" | tr -d '\r'; }
+    # Config first, raw and the renderer stamp last: an install cut short
+    # leaves a stale stamp, which the next update reads as a change.
+    install_candidate() {
+      printf '%s\n' "$stamp" > "$work/render.id"
+      mv -f "$work/config.json" "$state/config.json"
+      mv -f "$work/raw.json" "$state/raw.json"
+      mv -f "$work/render.id" "$state/render.id"
+    }
+    same_renderer() { [ "$(cat "$state/render.id" 2>/dev/null || true)" = "$stamp" ]; }
+
+    case "$mode" in
+      start)
+        boot="$(cat /proc/sys/kernel/random/boot_id)"
+        have_raw=0
+        if [ -s "$state/raw.json" ] && [ -s "$state/config.json" ] \
+          && [ "$(cat "$state/boot_id" 2>/dev/null || true)" = "$boot" ]; then
+          if ! same_renderer; then
+            cp "$state/raw.json" "$work/raw.json"
+            have_raw=1
+          fi
+        elif fetch; then
+          have_raw=1
+        elif [ -s "$state/raw.json" ]; then
+          say "fetch failed — rendering the stored fetch"
+          cp "$state/raw.json" "$work/raw.json"
+          have_raw=1
+        fi
+        if [ "$have_raw" = 1 ]; then
+          if render; then
+            install_candidate
+          elif [ -s "$state/config.json" ]; then
+            say "render failed ($(lastline)) — starting on the stored config"
+          else
+            fail "render failed and no config is stored: $(lastline)"
+          fi
+        elif [ -s "$state/config.json" ]; then
+          say "fetch failed — starting on the stored config"
+        else
+          fail "fetch failed and no config is stored: $(lastline)"
+        fi
+        printf '%s\n' "$boot" > "$state/boot_id"
+        say "starting on $(sha256sum "$state/config.json" | cut -c1-12)"
+        ;;
+      update)
+        fetch || fail "fetch: $(lastline)"
+        if [ -s "$state/config.json" ] && same_renderer \
+          && ${pkgs.diffutils}/bin/cmp -s "$work/raw.json" "$state/raw.json"; then
+          say "config unchanged"
+          report unchanged
+          exit 0
+        fi
+        render || fail "render: $(lastline)"
+        install_candidate
+        # The router's start takes the same lock.
+        ${pkgs.util-linux}/bin/flock -u 9
+        say "config changed — restarting ${serviceName}"
+        ${pkgs.systemd}/bin/systemctl restart ${serviceName}.service \
+          || fail "installed, but ${serviceName} failed to restart"
+        report applied
+        ;;
+      *)
+        fail "unknown mode $mode"
+        ;;
+    esac
+  '';
+
+  # --- Fleet socket client (plan § 3.4), run by websocat on the socket ---
+  # stdout is the socket, one frame per line; logs go to stderr. The first
+  # frame carries the token — read from the secret on stdin, so it is never on
+  # an argv or in the URL. Each {"rev": N} runs one update and answers
+  # {"applied": N}, {"unchanged": N} or {"failed": N, "error": "<line>"}.
+  fleetClient = pkgs.writeShellScript "${serviceName}-fleet-client" ''
+    set -u
+    jq=${pkgs.jq}/bin/jq
+    say() { echo "${serviceName}-fleet: $*" >&2; }
+
+    $jq -Rsc --arg host "$(cat /proc/sys/kernel/hostname)" \
+      '{token: rtrimstr("\n"), host: $host}' \
+      < "${config.sops.secrets.${cfg.tokenSecret}.path}" || exit 1
+
+    res="$(mktemp)"
+    trap 'rm -f "$res"' EXIT
+    while IFS= read -r frame; do
+      rev="$(printf '%s\n' "$frame" | $jq -r '.rev | numbers' 2>/dev/null || true)"
+      if [ -z "$rev" ]; then
+        say "ignored a frame without a rev"
+        continue
+      fi
+      : > "$res"
+      ${configScript} update "$res" >&2 || true
+      read -r word detail < "$res" || word=""
+      case "$word" in
+        applied | unchanged)
+          say "$word rev $rev"
+          $jq -nc --arg w "$word" --argjson n "$rev" '{($w): $n}'
+          ;;
+        *)
+          detail="''${detail:-the update ended without a result}"
+          say "failed rev $rev: $detail"
+          $jq -nc --argjson n "$rev" --arg e "$detail" '{failed: $n, error: $e}'
+          ;;
+      esac
+    done
+    say "socket closed"
   '';
 
   guardTable = "${serviceName}-guard";
@@ -426,6 +597,18 @@ in
       description = "Extra query parameters appended to the API URL.";
     };
 
+    postFetch = lib.mkOption {
+      type = lib.types.listOf lib.types.path;
+      default = [ ];
+      description = ''
+        Executables run in order on each rendered candidate, before
+        `sing-box check`, with the candidate's path as their first argument;
+        each may rewrite the file in place. A non-zero exit refuses the
+        candidate and the installed config stays. Updates compare raw API
+        answers, so a hook's rewrite never reads as a change.
+      '';
+    };
+
     logLevel = lib.mkOption {
       type = lib.types.enum [
         "trace"
@@ -484,12 +667,13 @@ in
       wantedBy = [ "multi-user.target" ];
 
       serviceConfig = {
-        # Order: clear residue / kill legacy installer, then fetch API config.
+        # Order: clear residue / kill legacy installer, then the config
+        # (fetched on the first start after boot, else the stored one).
         ExecStartPre = [
           "+${tunCleanup}"
-          fetchScript
+          "${configScript} start"
         ];
-        ExecStart = "${singboxPkg}/bin/sing-box -D /var/lib/${serviceName} run -c ${runtimeConfig}";
+        ExecStart = "${singboxPkg}/bin/sing-box -D ${stateDir} run -c ${liveConfig}";
         # Fence the auto_redirect listener once sing-box has published its port.
         ExecStartPost = "+${redirectGuard}";
         # Unconditional teardown so crash residue cannot poison the next start.
@@ -499,12 +683,14 @@ in
         # under restrictive capability sets.
         Restart = "on-failure";
         RestartSec = 10;
-        RuntimeDirectory = serviceName;
         StateDirectory = serviceName;
+        StateDirectoryMode = "0700";
         LimitNOFILE = 65536;
       };
     };
 
+    # By hand: systemctl start <serviceName>-update. The fleet socket below
+    # runs the same update on every pushed revision.
     systemd.services."${serviceName}-update" = {
       description = "Refetch the UCC sing-box config for ${cfg.user}; restart ${serviceName} when it changed";
       after = [
@@ -514,8 +700,29 @@ in
       wants = [ "network-online.target" ];
       serviceConfig = {
         Type = "oneshot";
-        ExecStart = updateScript;
-        RuntimeDirectory = "${serviceName}-update";
+        ExecStart = "${configScript} update";
+      };
+    };
+
+    # The mesh Worker pushes each registry revision down this socket; the
+    # client applies it and answers (plan § 3.4). No timer: a host that is
+    # offline catches up on the revision it is sent at reconnect.
+    systemd.services."${serviceName}-fleet" = {
+      description = "Fleet socket for ${serviceName}: apply each pushed registry revision";
+      after = [
+        "network-online.target"
+        "sops-nix.service"
+        "${serviceName}.service"
+      ];
+      wants = [ "network-online.target" ];
+      wantedBy = [ "multi-user.target" ];
+      startLimitIntervalSec = 0;
+      serviceConfig = {
+        ExecStart = "${pkgs.websocat}/bin/websocat --text --linemode-strip-newlines --exit-on-eof --ping-interval 30 --ping-timeout 90 ${fleetUrl} exec:${fleetClient}";
+        Restart = "always";
+        RestartSec = 10;
+        RestartSteps = 5;
+        RestartMaxDelaySec = 300;
       };
     };
   };
