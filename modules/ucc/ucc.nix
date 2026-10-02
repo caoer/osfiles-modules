@@ -93,8 +93,9 @@ in
       type = sourceType;
       default = null;
       description = ''
-        Claude Code system prompt → ~/.local/share/ucc/shared/SYSTEM_PROMPT.md
-        (ucc-auto passes it via --system-prompt-file). String = out-of-store
+        File placed at ~/.local/share/ucc/shared/SYSTEM_PROMPT.md. No ucc
+        launcher reads it: ucc-auto passes no --system-prompt-file and takes
+        its system prompt from its launch pages. String = out-of-store
         symlink (live-edit), path = store copy. null = unmanaged.
       '';
     };
