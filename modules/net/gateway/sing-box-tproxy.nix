@@ -191,6 +191,9 @@ lib.mkIf (cfg.enable && ecfg.enable && tp.enable) {
     ++ lib.optional sorCfg.enable "${sorCfg.systemdName}.service"
     ++ lib.mapAttrsToList (_: inst: "${inst.systemdName}.service") ecfg.sorClients;
 
+    # Mutually exclusive with the ad-hoc TUN from osfiles
+    # scripts/enable-sing-box-tun.sh: starting tproxy stops that TUN, and the
+    # script stops tproxy before raising its TUN and restarts it on stop.
     conflictServices = [ "sing-box-tun-slv.service" ];
 
     configPostProcess =
