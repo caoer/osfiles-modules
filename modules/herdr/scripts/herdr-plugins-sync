@@ -12,8 +12,9 @@
 #
 # Bumping a pin: install the new ref by hand, confirm it works, then edit the
 # PLUGINS table below (osfiles: bin/herdr-plugins-sync) and commit.
-# Plugin *settings* are not managed here — they ride in config/herdr/plugins/
-# and land as ~/.config/herdr/plugins/config/<id>/ through home-manager.
+# Plugin *settings* are not managed here — they ride in osf-modules
+# modules/herdr/assets/plugins/<id>/ and land as
+# ~/.config/herdr/plugins/config/<id>/ through home-manager.
 set -eu
 
 # id|owner/repo|commit

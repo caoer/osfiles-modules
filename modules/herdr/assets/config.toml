@@ -5,7 +5,7 @@
 # land back in the repo. Linux hosts get a read-only store copy through
 # home/linux/herdr.nix — change settings HERE and rebuild, not on the box.
 # Plugins are not in this file: pins live in bin/herdr-plugins-sync, plugin
-# settings in config/herdr/plugins/.
+# settings in osf-modules modules/herdr/assets/plugins/.
 #
 # Keep it host-independent — no /Users/... or /home/... paths. Custom commands
 # get the full login PATH (verified on 0.8.0, shell + popup), so call a script
