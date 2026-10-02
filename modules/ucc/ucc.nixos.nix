@@ -13,8 +13,9 @@
 #   ~/.local/bin/claude        → ~/.local/share/ucc/bin/ucc-auto
 #   ~/.local/share/ucc/shared/SYSTEM_PROMPT.md
 #                              → flake-canonical store copy by default
-#                              (osf.ucc.users.<n>.systemPromptSource; consumed
-#                              by ucc-auto via --system-prompt-file). A string
+#                              (osf.ucc.users.<n>.systemPromptSource). No ucc
+#                              launcher reads it; ucc-auto takes its system
+#                              prompt from its launch pages. A string
 #                              source switches it to a live-edit symlink.
 #   ~/.local/share/ucc/shared/CLAUDE.md
 #                              → the target every profiles/<n>/CLAUDE.md
@@ -56,8 +57,8 @@ let
         default = ../../assets/SYSTEM_PROMPT.md;
         defaultText = lib.literalExpression "agent-flake's canonical assets/SYSTEM_PROMPT.md (immutable store copy)";
         description = ''
-          Claude Code system prompt → ~/.local/share/ucc/shared/SYSTEM_PROMPT.md
-          (ucc-auto passes it via --system-prompt-file). Defaults to
+          File placed at ~/.local/share/ucc/shared/SYSTEM_PROMPT.md. No ucc
+          launcher reads it (ucc-auto passes no --system-prompt-file). Defaults to
           agent-flake's canonical prompt as a nix PATH → an immutable store copy,
           so the fleet stays uniform (rebuild to change). Per-host ESCAPE HATCH:
           set a STRING absolute path (e.g.
