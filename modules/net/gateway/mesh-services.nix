@@ -32,7 +32,7 @@ let
       desc = "sing-box DNS";
     };
     easytier-rpc = {
-      port = 15888;
+      port = 15600; # osfiles lib/osf/mesh.nix rpcPortal
       proto = "tcp";
       tier = "internal";
       desc = "EasyTier RPC (localhost only)";
