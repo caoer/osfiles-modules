@@ -13,6 +13,7 @@
 {
   config,
   lib,
+  options,
   pkgs,
   osfLib,
   ...
@@ -23,6 +24,7 @@ let
   cfg = config.osf.gateway;
   ecfg = cfg.edge;
   sorCfg = ecfg.sorClient;
+  secretConfig = import ../../../lib/secretConfig.nix { inherit lib; };
 
   # ── Unit builder ───────────────────────────────────────────────────
   # `inst` carries listenPort, serviceName, redisUrl, muxPassword, package,
@@ -113,7 +115,12 @@ let
         };
       };
 
-      configFile = pkgs.writeText "${inst.systemdName}.json" (builtins.toJSON generatedConfig);
+      configText = builtins.toJSON generatedConfig;
+      # A placeholder credential (config.sops.placeholder.<key>) renders the
+      # config as a sops template, handed to the DynamicUser as a credential.
+      templated = secretConfig.hasPlaceholder configText;
+      configFile =
+        if templated then "%d/config.json" else pkgs.writeText "${inst.systemdName}.json" configText;
 
       # ── Private resolver for the redis-pubsub transport ──────────────
       # sing-box-sor dials its redis_url host via Go's net.Dial (system
@@ -129,31 +136,36 @@ let
       '';
     in
     {
-      inherit description;
-      after = [ "network-online.target" ];
-      wants = [ "network-online.target" ];
-      wantedBy = [ "multi-user.target" ];
+      inherit configText templated;
+      service = {
+        inherit description;
+        after = [ "network-online.target" ];
+        wants = [ "network-online.target" ];
+        wantedBy = [ "multi-user.target" ];
 
-      serviceConfig = {
-        ExecStartPre = "${inst.package}/bin/sing-box check -c ${configFile}";
-        ExecStart = "${inst.package}/bin/sing-box -D /var/lib/${inst.systemdName} run -c ${configFile}";
-        Restart = "on-failure";
-        RestartSec = 3;
-        LimitNOFILE = 65536;
-        StateDirectory = inst.systemdName;
-        DynamicUser = true;
-        # Private /etc/resolv.conf so the redis-pubsub transport resolves its
-        # redis host without depending on the tproxy's :53 (see resolvConf).
-        BindReadOnlyPaths = [ "${resolvConf}:/etc/resolv.conf" ];
+        serviceConfig = {
+          ExecStartPre = "${inst.package}/bin/sing-box check -c ${configFile}";
+          ExecStart = "${inst.package}/bin/sing-box -D /var/lib/${inst.systemdName} run -c ${configFile}";
+          Restart = "on-failure";
+          RestartSec = 3;
+          LimitNOFILE = 65536;
+          StateDirectory = inst.systemdName;
+          DynamicUser = true;
+          # Private /etc/resolv.conf so the redis-pubsub transport resolves its
+          # redis host without depending on the tproxy's :53 (see resolvConf).
+          BindReadOnlyPaths = [ "${resolvConf}:/etc/resolv.conf" ];
+        }
+        // lib.optionalAttrs templated {
+          LoadCredential = "config.json:${config.sops.templates."${inst.systemdName}.json".path}";
+        };
+        # No restartTriggers needed: a store configFile and resolvConf are
+        # content-addressed paths embedded in the unit, so any config change
+        # restarts on switch; a templated config restarts through its template's
+        # restartUnits.
       };
-      # No restartTriggers needed: configFile and resolvConf are
-      # content-addressed store paths embedded in the unit, so any config
-      # change restarts on switch.
     };
 
-in
-lib.mkIf (cfg.enable && ecfg.enable) {
-  systemd.services =
+  units =
     lib.optionalAttrs sorCfg.enable {
       ${sorCfg.systemdName} = mkUnit "sing-box SoR client (redis-pubsub to core router, isolated)" sorCfg;
     }
@@ -163,4 +175,20 @@ lib.mkIf (cfg.enable && ecfg.enable) {
         mkUnit "sing-box SoR client ${name} (redis-pubsub service ${inst.serviceName}, isolated)" inst
       )
     ) ecfg.sorClients;
-}
+
+in
+lib.mkIf (cfg.enable && ecfg.enable) (
+  {
+    systemd.services = lib.mapAttrs (_: u: u.service) units;
+  }
+  # Hosts without sops-nix never carry a placeholder; they get no sops option.
+  // lib.optionalAttrs (options ? sops) {
+    sops.templates = lib.mapAttrs' (
+      name: u:
+      lib.nameValuePair "${name}.json" {
+        content = u.configText;
+        restartUnits = [ "${name}.service" ];
+      }
+    ) (lib.filterAttrs (_: u: u.templated) units);
+  }
+)

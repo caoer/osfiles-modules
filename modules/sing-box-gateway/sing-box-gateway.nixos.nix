@@ -22,6 +22,7 @@
 {
   config,
   lib,
+  options,
   pkgs,
   ...
 }:
@@ -119,8 +120,19 @@ let
   );
 
   finalConfig = cfg.configPostProcess generated.config;
+  configText = builtins.toJSON finalConfig;
 
-  configTemplate = pkgs.writeText "${cfg.serviceName}.json" (builtins.toJSON finalConfig);
+  # A credential given as config.sops.placeholder.<key> makes the config a sops
+  # template, rendered root-only at activation; a config without one stays a
+  # store file.
+  secretConfig = import ../../lib/secretConfig.nix { inherit lib; };
+  templated = secretConfig.hasPlaceholder configText;
+  templateName = "${cfg.serviceName}.json";
+  configTemplate =
+    if templated then
+      config.sops.templates.${templateName}.path
+    else
+      pkgs.writeText "${cfg.serviceName}.json" configText;
 
   # ── Secret injection (Clash API) ─────────────────────────────────
   secretInjectionScript =
@@ -463,65 +475,76 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
-    assertions = [
-      {
-        assertion = clashOn -> cfg.clashApi.secretFile != null;
-        message = "osf.sing-box-gateway: clashApi.secretFile must be set when Clash API is enabled.";
-      }
-    ];
+  config = mkIf cfg.enable (
+    {
+      assertions = [
+        {
+          assertion = clashOn -> cfg.clashApi.secretFile != null;
+          message = "osf.sing-box-gateway: clashApi.secretFile must be set when Clash API is enabled.";
+        }
+      ];
 
-    environment.systemPackages = [ singBoxPkg ];
+      environment.systemPackages = [ singBoxPkg ];
 
-    # ── sing-box service ───────────────────────────────────────────
-    systemd.services.${cfg.serviceName} = {
-      description = "sing-box transparent proxy gateway (TUN auto_redirect)";
-      after = cfg.afterServices ++ lib.optional clashOn "sops-nix.service";
-      wants = lib.filter (s: lib.hasSuffix ".target" s) cfg.afterServices;
-      wantedBy = [ "multi-user.target" ];
-      conflicts = cfg.conflictServices;
+      # ── sing-box service ───────────────────────────────────────────
+      systemd.services.${cfg.serviceName} = {
+        description = "sing-box transparent proxy gateway (TUN auto_redirect)";
+        after = cfg.afterServices ++ lib.optional clashOn "sops-nix.service";
+        wants = lib.filter (s: lib.hasSuffix ".target" s) cfg.afterServices;
+        wantedBy = [ "multi-user.target" ];
+        conflicts = cfg.conflictServices;
 
-      serviceConfig = {
-        ExecStart = "${singBoxPkg}/bin/sing-box run -c ${configPath}";
-        ExecStartPre = [
-          "+${dnsBootstrapScript}"
-        ]
-        ++ lib.optional clashOn secretInjectionScript
-        ++ [ "${singBoxPkg}/bin/sing-box check -c ${configPath}" ];
-        ExecStopPost = "${dnsBootstrapScript}";
-        Restart = "on-failure";
-        RestartSec = 5;
-        LimitNOFILE = 65536;
-        AmbientCapabilities = capabilities;
-        CapabilityBoundingSet = capabilities;
-        StateDirectory = cfg.serviceName;
-      }
-      // lib.optionalAttrs clashOn {
-        RuntimeDirectory = cfg.serviceName;
-      }
-      // lib.optionalAttrs cfg.dns.setSystemResolver {
-        ExecStartPost = "+${dnsRestoreScript}";
+        serviceConfig = {
+          ExecStart = "${singBoxPkg}/bin/sing-box run -c ${configPath}";
+          ExecStartPre = [
+            "+${dnsBootstrapScript}"
+          ]
+          ++ lib.optional clashOn secretInjectionScript
+          ++ [ "${singBoxPkg}/bin/sing-box check -c ${configPath}" ];
+          ExecStopPost = "${dnsBootstrapScript}";
+          Restart = "on-failure";
+          RestartSec = 5;
+          LimitNOFILE = 65536;
+          AmbientCapabilities = capabilities;
+          CapabilityBoundingSet = capabilities;
+          StateDirectory = cfg.serviceName;
+        }
+        // lib.optionalAttrs clashOn {
+          RuntimeDirectory = cfg.serviceName;
+        }
+        // lib.optionalAttrs cfg.dns.setSystemResolver {
+          ExecStartPost = "+${dnsRestoreScript}";
+        };
       };
-    };
 
-    # ── Networking ──────────────────────────────────────────────────
-    networking = lib.mkMerge [
-      (lib.mkIf cfg.dns.setSystemResolver {
-        nameservers = mkForce [ "127.0.0.1" ];
-      })
-      {
-        firewall.checkReversePath = mkForce "loose";
-      }
-      (lib.mkIf hasSubnets {
-        firewall.extraInputRules = ''
-          ip saddr { ${lib.concatStringsSep ", " cfg.sourceSubnets} } ct status dnat accept comment "sing-box auto_redirect: forwarded LAN clients"
-        '';
-      })
-    ];
+      # ── Networking ──────────────────────────────────────────────────
+      networking = lib.mkMerge [
+        (lib.mkIf cfg.dns.setSystemResolver {
+          nameservers = mkForce [ "127.0.0.1" ];
+        })
+        {
+          firewall.checkReversePath = mkForce "loose";
+        }
+        (lib.mkIf hasSubnets {
+          firewall.extraInputRules = ''
+            ip saddr { ${lib.concatStringsSep ", " cfg.sourceSubnets} } ct status dnat accept comment "sing-box auto_redirect: forwarded LAN clients"
+          '';
+        })
+      ];
 
-    # metacubexd dashboard assets
-    systemd.tmpfiles.rules = lib.mkIf clashOn [
-      "L+ ${dashboardDir} - - - - ${dashboardPkg}"
-    ];
-  };
+      # metacubexd dashboard assets
+      systemd.tmpfiles.rules = lib.mkIf clashOn [
+        "L+ ${dashboardDir} - - - - ${dashboardPkg}"
+      ];
+    }
+    # Hosts without sops-nix never carry a placeholder; they get no sops option.
+    // lib.optionalAttrs (options ? sops) {
+      sops.templates = mkIf templated {
+        ${templateName} = {
+          content = configText;
+          restartUnits = [ "${cfg.serviceName}.service" ];
+        };
+      };
+    }
+  );
 }

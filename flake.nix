@@ -166,6 +166,9 @@
         mkEasytierStartScript = import ./lib/mkEasytierStartScript.nix;
         easytierTailscaleFix = import ./lib/easytierTailscaleFix.nix;
         mkSsOutbound = import ./lib/mkSsOutbound.nix;
+        # placeholder / hasPlaceholder: a credential option that holds a sops
+        # placeholder makes its config a sops template (lib/secretConfig.nix).
+        secretConfig = import ./lib/secretConfig.nix { inherit (nixpkgs) lib; };
         # Universal network constants (public DNS resolvers, RFC1918, CGNAT,
         # magic-DNS addresses) — safe-public, shared by all consumers.
         wellKnown = import ./lib/well-known.nix;
