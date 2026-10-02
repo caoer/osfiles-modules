@@ -36,7 +36,7 @@ lib.mkMerge [
           ];
           desc = "sing-box DNS";
         };
-        # EasyTier listener ports: module-owned (modules/nixos/easytier.nix).
+        # EasyTier listener ports: module-owned (modules/net/easytier.nix).
         # Derived from cfg.listeners URIs — no per-host/per-gateway duplication.
       };
     };

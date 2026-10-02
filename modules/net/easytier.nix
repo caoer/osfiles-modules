@@ -116,7 +116,7 @@ let
   easytierPkg = cfg.package;
 
   # Tailscale coexistence scripts — shared, byte-identical with modules/foreign/easytier.nix.
-  # Rationale + the magicDnsRelay / CGNAT explanation live in lib/osf/easytierTailscaleFix.nix.
+  # Rationale + the magicDnsRelay / CGNAT explanation live in lib/easytierTailscaleFix.nix.
   tailscale = osfLib.easytierTailscaleFix { inherit pkgs; };
 
   startScript = osfLib.mkEasytierStartScript (

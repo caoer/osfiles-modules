@@ -1,7 +1,7 @@
-# lib/osf/easytierTailscaleFix.nix — Tailscale coexistence scripts for EasyTier.
+# lib/easytierTailscaleFix.nix — Tailscale coexistence scripts for EasyTier.
 #
-# Single source for the fix/cleanup scripts consumed by BOTH modules/nixos/easytier.nix
-# and modules/foreign/easytier.nix (platform substrates stay separate; only this
+# Single source for the fix/cleanup scripts consumed by BOTH modules/net/easytier.nix
+# and osfiles modules/foreign/easytier.nix (platform substrates stay separate; only this
 # byte-identical, platform-neutral script pair is shared). Divergence here would be a
 # silent one-platform mesh blackhole during an incident — so it lives in exactly one place.
 #
