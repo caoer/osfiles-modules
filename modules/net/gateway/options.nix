@@ -118,68 +118,6 @@ in
       description = "Mesh service exposure registry. Consumed by firewall rules.";
     };
 
-    # ── Watchdog ─────────────────────────────────────────────────────
-    watchdog = {
-      enable = mkEnableOption "eBPF tunnel health watchdog";
-
-      monitorPorts = mkOption {
-        type = types.listOf types.port;
-        default = [ 6379 ];
-        description = "TCP ports to monitor for retransmits and state changes.";
-      };
-
-      redisAddr = mkOption {
-        type = types.str;
-        default = "${wk.localhost}:6379";
-        description = "Redis address for pre-recovery health check.";
-      };
-
-      cooldownSeconds = mkOption {
-        type = types.int;
-        default = 120;
-        description = "Minimum seconds between recovery attempts.";
-      };
-
-      dryRun = mkOption {
-        type = types.bool;
-        default = false;
-        description = "Log recovery actions without executing them.";
-      };
-
-      logLevel = mkOption {
-        type = types.enum [
-          "debug"
-          "info"
-          "warn"
-          "error"
-        ];
-        default = "info";
-        description = "Log verbosity level.";
-      };
-
-      alertWebhookSecret = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        example = "watchdog-webhook";
-        description = "SOPS secret key for alert webhook URL. Null disables alerts.";
-      };
-
-      services = mkOption {
-        type = types.attrsOf (
-          types.submodule {
-            options = {
-              unit = mkOption {
-                type = types.str;
-                description = "Systemd unit name to restart on failure.";
-              };
-            };
-          }
-        );
-        default = { };
-        description = "Services the watchdog monitors and can restart. Defaults set per role.";
-      };
-    };
-
     # ── Edge role — tunnel TO a core router ──────────────────────────
     edge = {
       enable = mkEnableOption "edge gateway role (tunnel traffic to core router)";

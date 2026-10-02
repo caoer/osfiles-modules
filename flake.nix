@@ -174,10 +174,9 @@
         netTuning = import ./modules/net/net-tuning.nix;
       };
 
-      # Overlay: adds metacubexd, watchdog to pkgs.
+      # Overlay: adds metacubexd to pkgs.
       overlays.default = final: prev: {
         metacubexd = final.callPackage ./packages/metacubexd.nix { };
-        watchdog = final.callPackage ./packages/watchdog.nix { };
       };
 
       packages = forAllSystems (
@@ -205,7 +204,6 @@
           default = paseo;
           codex = pkgs.callPackage ./packages/codex.nix { };
           metacubexd = pkgs.callPackage ./packages/metacubexd.nix { };
-          watchdog = pkgs.callPackage ./packages/watchdog.nix { };
         }
       );
     };

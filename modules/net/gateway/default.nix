@@ -18,7 +18,6 @@
     ./easytier.nix
     ./firewall.nix
     ./network-defaults.nix
-    ./watchdog.nix
     ./mesh-services.nix
     # ── Edge role (gated on cfg.edge.enable) ───────
     ./sing-box-tproxy.nix

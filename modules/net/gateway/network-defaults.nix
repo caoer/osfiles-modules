@@ -42,18 +42,6 @@ lib.mkMerge [
     };
   })
 
-  # ── Edge role defaults ──────────────────────────────────────────
-  (lib.mkIf (cfg.enable && cfg.edge.enable) {
-    osf.gateway.watchdog.services = lib.mkDefault {
-      tcp-over-redis = {
-        unit = "tcp-over-redis-client.service";
-      };
-      sing-box-tproxy = {
-        unit = "sing-box-tproxy.service";
-      };
-    };
-  })
-
   # Tproxy port registration removed: sing-box-tproxy now uses a TUN inbound
   # (auto_redirect), not a listening tproxy port. No firewall port to open.
 
@@ -71,12 +59,6 @@ lib.mkMerge [
         proto = "tcp";
         allow = [ "mesh" ];
         desc = "Clash API dashboard";
-      };
-    };
-
-    osf.gateway.watchdog.services = lib.mkDefault {
-      tcp-over-redis = {
-        unit = "tcp-over-redis-server.service";
       };
     };
   })

@@ -60,24 +60,7 @@ lib.mkMerge [
   (lib.mkIf cfg.enable {
     osf.gateway.meshServices = baseServices;
   })
-  (lib.mkIf (cfg.enable && cfg.edge.enable) {
-    # Edge watchdog defaults: monitor the tunnel chain
-    osf.gateway.watchdog.services = lib.mkDefault {
-      tcp-over-redis = {
-        unit = "tcp-over-redis-client.service";
-      };
-      sing-box-tproxy = {
-        unit = "sing-box-tproxy.service";
-      };
-    };
-  })
   (lib.mkIf (cfg.enable && cfg.core.enable) {
     osf.gateway.meshServices = coreServices;
-    # Core watchdog defaults: monitor the server
-    osf.gateway.watchdog.services = lib.mkDefault {
-      tcp-over-redis = {
-        unit = "tcp-over-redis-server.service";
-      };
-    };
   })
 ]
