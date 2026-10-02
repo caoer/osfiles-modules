@@ -284,12 +284,14 @@ let
       start)
         boot="$(cat /proc/sys/kernel/random/boot_id)"
         have_raw=0
+        why="fetch failed"
         if [ -s "$state/raw.json" ] && [ -s "$state/config.json" ] \
           && [ "$(cat "$state/boot_id" 2>/dev/null || true)" = "$boot" ]; then
           if ! same_renderer; then
             cp "$state/raw.json" "$work/raw.json"
             have_raw=1
           fi
+          why="fetched earlier this boot"
         elif fetch; then
           have_raw=1
         elif [ -s "$state/raw.json" ]; then
@@ -306,7 +308,7 @@ let
             fail "render failed and no config is stored: $(lastline)"
           fi
         elif [ -s "$state/config.json" ]; then
-          say "fetch failed — starting on the stored config"
+          say "$why — starting on the stored config"
         else
           fail "fetch failed and no config is stored: $(lastline)"
         fi
