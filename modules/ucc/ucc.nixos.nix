@@ -289,7 +289,12 @@ let
         RemainAfterExit = true;
       }
       // lib.optionalAttrs ucfg.bootFetch {
-        ExecStart = mkInstallerScript name ucfg;
+        # Opted-in accounts run the installer itself under the lingering user
+        # manager. Every process it starts then inherits a user cgroup instead
+        # of ucc-update-<user>.service, so stopping or restarting this system
+        # unit cannot kill a resident mrd (or another detached helper).
+        ExecStart =
+          if daemonInUserUnit name ucfg then installerThroughUserUnit name else mkInstallerScript name ucfg;
       }
       // lib.optionalAttrs (daemonInUserUnit name ucfg) {
         ExecStartPre = daemonToUserUnit "pre";
@@ -359,6 +364,45 @@ let
       echo "ucc: ccc-statusd.service does not own the daemon after 30s (${phase})" >&2
       exit 0
     '';
+
+  # The system boot unit remains the trigger and waits for the user unit's
+  # result, but it is no longer the installer's cgroup parent. The pre hook has
+  # already waited for the lingering manager, so failure here is loud rather
+  # than falling back to the unsafe system-unit cgroup.
+  installerThroughUserUnit =
+    name:
+    pkgs.writeShellScript "ucc-installer-through-user-unit-${name}" ''
+      set -eu
+      export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+      exec systemctl --user start --wait ucc-update.service
+    '';
+
+  # A oneshot normally cleans up every descendant when its main process exits.
+  # KillMode=process deliberately leaves detached installer children in this
+  # user cgroup: mrd has no foreground supervisor or stop verb, and the UCC
+  # installer owns its pidfile-targeted restart. A later run reuses the unit;
+  # stopping the system ucc-update-<user> trigger never reaches this cgroup.
+  installerUserUnit =
+    name: ucfg:
+    let
+      home = homeOf name;
+      unitPath = lib.concatStringsSep ":" [
+        "${home}/.local/bin"
+        "${home}/.local/share/ucc/bin"
+        "/run/wrappers/bin"
+        "/etc/profiles/per-user/${name}/bin"
+        "/run/current-system/sw/bin"
+      ];
+    in
+    {
+      Unit.Description = "UCC installer for ${name} (user cgroup)";
+      Service = {
+        Type = "oneshot";
+        ExecStart = mkInstallerScript name ucfg;
+        KillMode = "process";
+        Environment = lib.mapAttrsToList (k: v: "${k}=${v}") (nixLdEnvironment // { PATH = unitPath; });
+      };
+    };
 
   # The daemon's home: one user unit per opted-in user, run by its lingering
   # user manager so it starts at boot with no login.
@@ -502,6 +546,9 @@ in
     home-manager.users = lib.mapAttrs (name: ucfg: {
       imports = [ ./ucc.nix ];
       systemd.user.services.ccc-statusd = lib.mkIf (daemonInUserUnit name ucfg) (daemonUserUnit name);
+      systemd.user.services.ucc-update = lib.mkIf (daemonInUserUnit name ucfg) (
+        installerUserUnit name ucfg
+      );
       osf.ucc = {
         enable = true;
         systemPromptSource = ucfg.systemPromptSource;
