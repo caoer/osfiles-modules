@@ -109,6 +109,19 @@ let
           the same either way.
         '';
       };
+      daemonUserUnit = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Run this user's ccc-statusd in a systemd user unit (ccc-statusd.service)
+          under a lingering user manager, and have ucc-update-<user> hand the
+          daemon to that unit around the installer. Off: the installer starts
+          the daemon itself, inside ucc-update-<user>'s cgroup, where stopping
+          or restarting that unit kills it. Turning it on sets linger (a user
+          manager from boot) and declares the user unit; a host that declares
+          its own ccc-statusd user unit leaves this off. Needs bootFetch.
+        '';
+      };
       installerTokenSecret = lib.mkOption {
         type = lib.types.str;
         default = "ucc_token";
@@ -285,11 +298,11 @@ let
     }
   ) cfg.users;
 
-  # Only an account whose user manager runs from boot (linger) gets the
-  # daemon's user unit and the handoff around the installer. An account with
-  # linger off — set explicitly, as for colleague accounts on shared boxes —
-  # keeps today's behaviour: no user unit, no wait for a manager at boot.
-  daemonInUserUnit = name: ucfg: ucfg.bootFetch && config.users.users.${name}.linger == true;
+  # Opted-in accounts only (daemonUserUnit). An explicit linger = false wins
+  # over the option's default and also turns the unit and the handoff off, so
+  # nothing waits at boot for a user manager that never starts.
+  daemonInUserUnit =
+    name: ucfg: ucfg.bootFetch && ucfg.daemonUserUnit && config.users.users.${name}.linger != false;
 
   # The daemon belongs to the user's manager, in the ccc-statusd user unit
   # below — never to this system unit. The installer restarts the daemon
@@ -306,16 +319,28 @@ let
     pkgs.writeShellScript "ucc-daemon-user-unit-${phase}" ''
       set -u
       export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-      pidfile="$HOME/.local/share/ucc/cache/ccc-status/daemon.pid"
+      # The daemon's pidfile lives in CCC_CACHE_DIR when the UCC env chain
+      # sets it — the same files the user unit sources before the daemon.
+      cache=$(
+        set +eu
+        for f in default-env.sh user-env.sh user-override.sh; do
+          [ -f "$HOME/.local/share/ucc/$f" ] && . "$HOME/.local/share/ucc/$f" >/dev/null 2>&1
+        done
+        printf '%s' "''${CCC_CACHE_DIR:-$HOME/.local/share/ucc/cache/ccc-status}"
+      )
+      pidfile="$cache/daemon.pid"
       owned() {
         main=$(systemctl --user show -p MainPID --value ccc-statusd.service 2>/dev/null || true)
         pid=$(tr -dc '0-9' < "$pidfile" 2>/dev/null || true)
         [ -n "$pid" ] && [ "$main" = "$pid" ]
       }
-      for _ in $(seq 60); do
-        systemctl --user show-environment >/dev/null 2>&1 && break
-        sleep 2
-      done
+      # Linger starts the manager at boot; pre waits for it, post does not.
+      if [ ${phase} = pre ]; then
+        for _ in $(seq 30); do
+          systemctl --user show-environment >/dev/null 2>&1 && break
+          sleep 2
+        done
+      fi
       if ! systemctl --user show-environment >/dev/null 2>&1; then
         echo "ucc: user manager unreachable — the daemon stays where the installer starts it" >&2
         exit 0
@@ -335,9 +360,8 @@ let
       exit 0
     '';
 
-  # The daemon's home: one user unit per lingering boot-fetching UCC user, run
-  # by its user manager so it starts at boot with no login. Every value is
-  # a default — a host that declares its own ccc-statusd user unit keeps it.
+  # The daemon's home: one user unit per opted-in user, run by its lingering
+  # user manager so it starts at boot with no login.
   daemonUserUnit =
     name:
     let
@@ -350,9 +374,13 @@ let
         "/run/current-system/sw/bin"
       ];
     in
-    lib.mapAttrsRecursive (_: lib.mkDefault) {
+    {
       Unit = {
         Description = "ccc-statusd daemon for ${name}";
+        # The Environment below names nixpkgs store paths, so every nixpkgs
+        # bump changes the unit; keep-old leaves the running daemon to the
+        # installer, which restarts it through this unit on a new release.
+        X-SwitchMethod = "keep-old";
         After = [ "network-online.target" ];
         Wants = [ "network-online.target" ];
         ConditionPathExists = "%h/.local/bin/ccc-statusd";
@@ -462,14 +490,15 @@ in
       ) cfg.users
     );
 
+    # daemonUserUnit: a user manager from boot for the daemon's user unit.
+    users.users = lib.mapAttrs (_name: ucfg: {
+      linger = lib.mkIf (ucfg.bootFetch && ucfg.daemonUserUnit) (lib.mkDefault true);
+    }) cfg.users;
+
     # Home layer via the shared platform-neutral fragment. Sources are
     # strings → out-of-store symlinks into the host's osfiles checkout
     # (live-edit). Foreign/HM-standalone hosts import the same fragment
     # directly (e.g. hosts/cos-ucc/home.nix) with store-path sources.
-    users.users = lib.mapAttrs (_name: ucfg: {
-      linger = lib.mkIf ucfg.bootFetch (lib.mkDefault true);
-    }) cfg.users;
-
     home-manager.users = lib.mapAttrs (name: ucfg: {
       imports = [ ./ucc.nix ];
       systemd.user.services.ccc-statusd = lib.mkIf (daemonInUserUnit name ucfg) (daemonUserUnit name);
