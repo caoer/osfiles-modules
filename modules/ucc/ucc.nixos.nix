@@ -261,6 +261,10 @@ let
         gawk
         findutils
         git
+        # ps: the installer reads the resident engine's command with
+        # `ps -p <pid> -o command=` and restarts it only when that read
+        # names the installed mrd; without ps it skips the restart silently.
+        procps
       ];
       environment = nixLdEnvironment;
       enable = ucfg.bootFetch;
