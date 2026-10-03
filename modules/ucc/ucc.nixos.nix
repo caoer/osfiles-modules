@@ -276,12 +276,20 @@ let
         RemainAfterExit = true;
       }
       // lib.optionalAttrs ucfg.bootFetch {
-        ExecStartPre = daemonToUserUnit "pre";
         ExecStart = mkInstallerScript name ucfg;
+      }
+      // lib.optionalAttrs (daemonInUserUnit name ucfg) {
+        ExecStartPre = daemonToUserUnit "pre";
         ExecStartPost = daemonToUserUnit "post";
       };
     }
   ) cfg.users;
+
+  # Only an account whose user manager runs from boot (linger) gets the
+  # daemon's user unit and the handoff around the installer. An account with
+  # linger off — set explicitly, as for colleague accounts on shared boxes —
+  # keeps today's behaviour: no user unit, no wait for a manager at boot.
+  daemonInUserUnit = name: ucfg: ucfg.bootFetch && config.users.users.${name}.linger == true;
 
   # The daemon belongs to the user's manager, in the ccc-statusd user unit
   # below — never to this system unit. The installer restarts the daemon
@@ -327,8 +335,8 @@ let
       exit 0
     '';
 
-  # The daemon's home: one user unit per boot-fetching UCC user, run by a
-  # lingering user manager so it starts at boot with no login. Every value is
+  # The daemon's home: one user unit per lingering boot-fetching UCC user, run
+  # by its user manager so it starts at boot with no login. Every value is
   # a default — a host that declares its own ccc-statusd user unit keeps it.
   daemonUserUnit =
     name:
@@ -464,7 +472,7 @@ in
 
     home-manager.users = lib.mapAttrs (name: ucfg: {
       imports = [ ./ucc.nix ];
-      systemd.user.services.ccc-statusd = lib.mkIf ucfg.bootFetch (daemonUserUnit name);
+      systemd.user.services.ccc-statusd = lib.mkIf (daemonInUserUnit name ucfg) (daemonUserUnit name);
       osf.ucc = {
         enable = true;
         systemPromptSource = ucfg.systemPromptSource;
