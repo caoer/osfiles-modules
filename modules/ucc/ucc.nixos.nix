@@ -265,6 +265,8 @@ let
         # `ps -p <pid> -o command=` and restarts it only when that read
         # names the installed mrd; without ps it skips the restart silently.
         procps
+        # cmp: the installer compares the downloaded mrd with the installed one.
+        diffutils
       ];
       environment = nixLdEnvironment;
       enable = ucfg.bootFetch;
@@ -274,10 +276,90 @@ let
         RemainAfterExit = true;
       }
       // lib.optionalAttrs ucfg.bootFetch {
+        ExecStartPre = daemonToUserUnit "pre";
         ExecStart = mkInstallerScript name ucfg;
+        ExecStartPost = daemonToUserUnit "post";
       };
     }
   ) cfg.users;
+
+  # The daemon belongs to the user's manager, in the ccc-statusd user unit
+  # below — never to this system unit. The installer restarts the daemon
+  # through a user unit only when that unit's MainPID is the running daemon;
+  # otherwise it runs `ccc-statusd restart` itself, and the daemon (with the
+  # shellkit and mrd it spawns) lands in this unit's cgroup, where stopping or
+  # restarting ucc-update-<user> kills it. "pre" starts the user unit so the
+  # installer finds the daemon there; "post" moves a daemon the installer
+  # started itself (first install, user manager late) into the unit. Neither
+  # fails the unit: an unreachable user manager leaves the installer's own
+  # start, as before.
+  daemonToUserUnit =
+    phase:
+    pkgs.writeShellScript "ucc-daemon-user-unit-${phase}" ''
+      set -u
+      export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+      pidfile="$HOME/.local/share/ucc/cache/ccc-status/daemon.pid"
+      owned() {
+        main=$(systemctl --user show -p MainPID --value ccc-statusd.service 2>/dev/null || true)
+        pid=$(tr -dc '0-9' < "$pidfile" 2>/dev/null || true)
+        [ -n "$pid" ] && [ "$main" = "$pid" ]
+      }
+      for _ in $(seq 60); do
+        systemctl --user show-environment >/dev/null 2>&1 && break
+        sleep 2
+      done
+      if ! systemctl --user show-environment >/dev/null 2>&1; then
+        echo "ucc: user manager unreachable — the daemon stays where the installer starts it" >&2
+        exit 0
+      fi
+      [ -x "$HOME/.local/bin/ccc-statusd" ] || exit 0
+      if [ ${phase} = pre ]; then
+        systemctl --user start ccc-statusd.service || exit 0
+      elif ! owned; then
+        echo "ucc: daemon is outside ccc-statusd.service — restarting it through the unit"
+        systemctl --user restart ccc-statusd.service || exit 0
+      fi
+      for _ in $(seq 30); do
+        owned && { echo "ucc: daemon $pid runs in ccc-statusd.service (${phase})"; exit 0; }
+        sleep 1
+      done
+      echo "ucc: ccc-statusd.service does not own the daemon after 30s (${phase})" >&2
+      exit 0
+    '';
+
+  # The daemon's home: one user unit per boot-fetching UCC user, run by a
+  # lingering user manager so it starts at boot with no login. Every value is
+  # a default — a host that declares its own ccc-statusd user unit keeps it.
+  daemonUserUnit =
+    name:
+    let
+      home = homeOf name;
+      unitPath = lib.concatStringsSep ":" [
+        "${home}/.local/bin"
+        "${home}/.local/share/ucc/bin"
+        "/run/wrappers/bin"
+        "/etc/profiles/per-user/${name}/bin"
+        "/run/current-system/sw/bin"
+      ];
+    in
+    lib.mapAttrsRecursive (_: lib.mkDefault) {
+      Unit = {
+        Description = "ccc-statusd daemon for ${name}";
+        After = [ "network-online.target" ];
+        Wants = [ "network-online.target" ];
+        ConditionPathExists = "%h/.local/bin/ccc-statusd";
+      };
+      Service = {
+        # A daemon started outside the unit (a shell, a hook) holds the
+        # socket; stop reclaims it.
+        ExecStartPre = "-%h/.local/bin/ccc-statusd stop";
+        ExecStart = "${pkgs.bash}/bin/bash -c 'for f in default-env.sh user-env.sh user-override.sh; do [ -f %h/.local/share/ucc/$$f ] && . %h/.local/share/ucc/$$f; done; exec %h/.local/bin/ccc-statusd start --foreground'";
+        Restart = "always";
+        RestartSec = 5;
+        Environment = lib.mapAttrsToList (k: v: "${k}=${v}") (nixLdEnvironment // { PATH = unitPath; });
+      };
+      Install.WantedBy = [ "default.target" ];
+    };
 
   settingsUnits = lib.mapAttrs' (
     name: ucfg:
@@ -376,8 +458,13 @@ in
     # strings → out-of-store symlinks into the host's osfiles checkout
     # (live-edit). Foreign/HM-standalone hosts import the same fragment
     # directly (e.g. hosts/cos-ucc/home.nix) with store-path sources.
-    home-manager.users = lib.mapAttrs (_name: ucfg: {
+    users.users = lib.mapAttrs (_name: ucfg: {
+      linger = lib.mkIf ucfg.bootFetch (lib.mkDefault true);
+    }) cfg.users;
+
+    home-manager.users = lib.mapAttrs (name: ucfg: {
       imports = [ ./ucc.nix ];
+      systemd.user.services.ccc-statusd = lib.mkIf ucfg.bootFetch (daemonUserUnit name);
       osf.ucc = {
         enable = true;
         systemPromptSource = ucfg.systemPromptSource;
