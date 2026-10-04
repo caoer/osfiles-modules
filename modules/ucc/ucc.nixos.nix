@@ -310,15 +310,12 @@ let
     name: ucfg: ucfg.bootFetch && ucfg.daemonUserUnit && config.users.users.${name}.linger != false;
 
   # The daemon belongs to the user's manager, in the ccc-statusd user unit
-  # below — never to this system unit. The installer restarts the daemon
-  # through a user unit only when that unit's MainPID is the running daemon;
-  # otherwise it runs `ccc-statusd restart` itself, and the daemon (with the
-  # shellkit and mrd it spawns) lands in this unit's cgroup, where stopping or
-  # restarting ucc-update-<user> kills it. "pre" starts the user unit so the
-  # installer finds the daemon there; "post" moves a daemon the installer
-  # started itself (first install, user manager late) into the unit. Neither
-  # fails the unit: an unreachable user manager leaves the installer's own
-  # start, as before.
+  # below — never to this system unit. "pre" starts the user unit so the
+  # installer finds the daemon there; "post" replaces a daemon the installer
+  # started outside that unit (first install, user manager late). These handoff
+  # hooks stay non-fatal, while installerThroughUserUnit below fails loudly if
+  # the user manager is unreachable rather than running the installer in the
+  # unsafe system-unit cgroup.
   daemonToUserUnit =
     phase:
     pkgs.writeShellScript "ucc-daemon-user-unit-${phase}" ''
