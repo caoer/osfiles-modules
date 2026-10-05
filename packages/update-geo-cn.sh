@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# update-geo-cn.sh — bump (or --check) the pinned geo-cn rule-set hash from
-# rules.sui.pics (our geo-rules CDN).
+# update-geo-cn.sh — bump (or --check) the vendored geo-cn rule-set
+# (geo-cn-raw.json.xz + its hash in geo-cn-ruleset.nix) from rules.sui.pics
+# (our geo-rules CDN).
 #
 # LOUD FAILURE CONTRACT: any error (R2 unreachable, bad JSON, not a sing-box
-# source rule-set) aborts non-zero and leaves the pin UNCHANGED. There is
-# deliberately no fallback to previous/vendored content — a stale pin must be a
-# visible failure, not a silent success.
+# source rule-set) aborts non-zero and leaves the pin and the vendored file
+# UNCHANGED — a stale pin must be a visible failure, not a silent success.
 #
 # USAGE:
 #   update-geo-cn.sh            bump the pin to the current live content
@@ -25,7 +25,9 @@ check_only=0
 [[ "${1:-}" == "--check" ]] && check_only=1
 
 url="https://rules.sui.pics/singbox/rule-sets/cn.json"
-pin_file="$(cd "$(dirname "$0")" && pwd)/geo-cn-ruleset.nix"
+pkg_dir="$(cd "$(dirname "$0")" && pwd)"
+pin_file="$pkg_dir/geo-cn-ruleset.nix"
+vendored="$pkg_dir/geo-cn-raw.json.xz"
 
 # Exactly one pinned hash must exist, else the sed rewrite below is ambiguous.
 hash_count=$(grep -cE 'sha256-[A-Za-z0-9+/=]+' "$pin_file" || true)
@@ -53,6 +55,10 @@ if [[ "$check_only" -eq 1 ]]; then
   exit 2
 fi
 
+xz -9e -c "$store_path" > "$vendored.new"
+[[ "$(xz -dc "$vendored.new" | nix hash file --sri --type sha256 /dev/stdin)" == "$hash" ]] \
+  || { rm -f "$vendored.new"; echo "ERROR: re-vendored bytes do not hash to $hash" >&2; exit 1; }
+mv "$vendored.new" "$vendored"
 sed -i.bak "s|$old_hash|$hash|" "$pin_file"
 rm -f "$pin_file.bak"
 grep -qF "$hash" "$pin_file" \

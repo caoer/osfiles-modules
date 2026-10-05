@@ -8,27 +8,38 @@
 # with zero network dependency at sing-box-tproxy start. Proven live 2026-07-03
 # (gateway-cq crash loop → :53 outage).
 #
-# WHY validated at build: the pinned bytes come from a MUTABLE URL (every
-# geo-rules deploy rewrites the object in place). A hash mismatch already fails
-# the build loudly; this wrapper additionally rejects a well-formed-hash but
-# structurally-wrong payload (empty rules, HTML error page, wrong schema) AT
-# BUILD — so a bad publish can never reach sing-box and crash-loop :53. Moving
-# the loud-failure contract from runtime (script-only) into the build closure.
+# WHY vendored: the CDN object is MUTABLE (every geo-rules deploy rewrites it in
+# place), so a fetch of it under a fixed hash fails on any rebuild after the
+# next publish. The pinned bytes live in this repo as geo-cn-raw.json.xz and
+# build offline. `raw` is a fixed-output derivation with the name and hash a
+# fetch of the same bytes would have, so its store path — and every path built
+# from it — depends only on the bytes, not on where they come from.
 #
-# Bump the pin with packages/update-geo-cn.sh (fails loud when R2 is
+# WHY validated at build: this wrapper rejects a well-formed-hash but
+# structurally-wrong payload (empty rules, HTML error page, wrong schema) AT
+# BUILD — so a bad publish can never reach sing-box and crash-loop :53.
+#
+# Bump the pin with packages/update-geo-cn.sh: it fetches the live object,
+# validates it, re-vendors it and rewrites the hash (fails loud when R2 is
 # unreachable; `--check` reports drift without editing).
 {
-  fetchurl,
   runCommand,
   jq,
+  xz,
 }:
 
 let
-  raw = fetchurl {
-    name = "geo-cn-raw.json";
-    url = "https://rules.sui.pics/singbox/rule-sets/cn.json";
-    hash = "sha256-OWQjGuJVTpMfqkG7YOAGow95rNvXbTNpV81E1uDiAzU=";
-  };
+  raw =
+    runCommand "geo-cn-raw.json"
+      {
+        nativeBuildInputs = [ xz ];
+        outputHashMode = "flat";
+        outputHashAlgo = "sha256";
+        outputHash = "sha256-OWQjGuJVTpMfqkG7YOAGow95rNvXbTNpV81E1uDiAzU=";
+      }
+      ''
+        xz -dc ${./geo-cn-raw.json.xz} > "$out"
+      '';
 in
 runCommand "geo-cn.json" { nativeBuildInputs = [ jq ]; } ''
   # Validate the fetched bytes are a real sing-box source rule-set (schema
