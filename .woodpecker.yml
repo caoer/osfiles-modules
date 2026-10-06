@@ -104,8 +104,10 @@ steps:
     environment:
       NIKS3_TOKEN:
         from_secret: niks3_token
-      GITEA_TOKEN:
-        from_secret: gitea_token
+      # The fleet clone token (osfiles secrets/svc/common.sops.yaml
+      # forgejo_woodpecker_clone_token), a repo secret for push and manual.
+      FORGE_TOKEN:
+        from_secret: forgejo_clone_token
     commands:
       - |
         cat >> /etc/nix/nix.conf <<EOF
@@ -115,7 +117,7 @@ steps:
       - umask 077
       # The fork is private; git (which nix runs for git+https inputs) reads
       # ~/.netrc.
-      - printf 'machine git.0xdao.app login caoer115 password %s\n' "$GITEA_TOKEN" > "$HOME/.netrc"
+      - printf 'machine git.0xdao.app login caoer115 password %s\n' "$FORGE_TOKEN" > "$HOME/.netrc"
       - pkg='.#packages.x86_64-linux.sing-box-dashboard'
       - nix build "$pkg" "$pkg.pnpmDeps" "$pkg.colorSchemes" -L
       - src=$(nix eval --raw "$pkg.src.outPath")
