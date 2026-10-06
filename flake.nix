@@ -56,6 +56,13 @@
       flake = false;
     };
 
+    # sing-box-dashboard source — our fork's main (upstream plus the oix
+    # tab), built by packages/sing-box-dashboard.nix; the lock pins the rev.
+    sing-box-dashboard-src = {
+      url = "git+https://git.0xdao.app/caoer115/sing-box-dashboard.git?ref=main";
+      flake = false;
+    };
+
     # THE central hunk pin for the whole fleet — review-first terminal diff
     # viewer for agent-authored changesets (`hunk diff A B`, `hunk show`,
     # `hunk patch`; also usable as git pager/difftool). Same tag osfiles pins
@@ -180,7 +187,9 @@
       # Overlay: adds metacubexd, sing-box-dashboard to pkgs.
       overlays.default = final: prev: {
         metacubexd = final.callPackage ./packages/metacubexd.nix { };
-        sing-box-dashboard = final.callPackage ./packages/sing-box-dashboard.nix { };
+        sing-box-dashboard = final.callPackage ./packages/sing-box-dashboard.nix {
+          src = inputs.sing-box-dashboard-src;
+        };
       };
 
       packages = forAllSystems (
@@ -208,7 +217,9 @@
           default = paseo;
           codex = pkgs.callPackage ./packages/codex.nix { };
           metacubexd = pkgs.callPackage ./packages/metacubexd.nix { };
-          sing-box-dashboard = pkgs.callPackage ./packages/sing-box-dashboard.nix { };
+          sing-box-dashboard = pkgs.callPackage ./packages/sing-box-dashboard.nix {
+            src = inputs.sing-box-dashboard-src;
+          };
         }
       );
     };
