@@ -399,6 +399,7 @@
         "impermanence": "impermanence",
         "nixpkgs": "nixpkgs_6",
         "nixpkgs-yazi": "nixpkgs-yazi",
+        "sing-box-dashboard-src": "sing-box-dashboard-src",
         "sops-nix": "sops-nix",
         "tmux-src": "tmux-src"
       }
@@ -422,6 +423,23 @@
         "owner": "oxalica",
         "repo": "rust-overlay",
         "type": "github"
+      }
+    },
+    "sing-box-dashboard-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1791310356,
+        "narHash": "sha256-/Zshh6s1Yq99cw9AIF/DVxWTjiR08te0JcYoTWisxWc=",
+        "ref": "main",
+        "rev": "a715410da5d3a406a0034bbfe296c2cbfebd7988",
+        "revCount": 95,
+        "type": "git",
+        "url": "https://git.0xdao.app/caoer115/sing-box-dashboard.git"
+      },
+      "original": {
+        "ref": "main",
+        "type": "git",
+        "url": "https://git.0xdao.app/caoer115/sing-box-dashboard.git"
       }
     },
     "sops-nix": {

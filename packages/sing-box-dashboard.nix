@@ -25,7 +25,7 @@ let
     repo = "iTerm2-Color-Schemes";
     rev = "8c84dd1a859f36ec8601b082bd97b4ec888f0f4d";
     sparseCheckout = [ "windowsterminal" ];
-    hash = lib.fakeHash;
+    hash = "sha256-OQj5Qn+yqw+4z4YwtbSMOHt3oKdDTb78cadeQzNcni4=";
   };
 in
 stdenvNoCC.mkDerivation (finalAttrs: {
@@ -37,7 +37,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     inherit (finalAttrs) pname version src;
     pnpm = pnpm_11;
     fetcherVersion = 4;
-    hash = lib.fakeHash;
+    hash = "sha256-MCld/J2LBtAz2bS00ICjCQN/QPXlLDKwzEGtFwlEl8c=";
   };
 
   nativeBuildInputs = [
