@@ -1,5 +1,6 @@
 # Woodpecker CI (ci.0xdao.app) — build the fleet's tmux (packages/tmux.nix,
-# caoer/tmux fork) and paseo (packages/paseo.nix, upstream's Linux release) and
+# caoer/tmux fork), paseo (packages/paseo.nix, upstream's Linux release) and
+# sing-box-dashboard (packages/sing-box-dashboard.nix, our fork) and
 # push their closures to the public niks3 cache (cache.0xtau.com, R2 CDN). No
 # public cache carries the tmux fork, so without this every host compiles tmux
 # from source on its next deploy. For paseo the pinned path that matters is the
@@ -84,6 +85,53 @@ steps:
       - |
         for link in ./result ./result-1; do
           hash=$(basename "$(readlink -f "$link")" | cut -d- -f1)
+          echo "checking https://cache.0xtau.com/$hash.narinfo"
+          nix run nixpkgs#curl -- -fsS "https://cache.0xtau.com/$hash.narinfo" | head -3
+        done
+
+  # sing-box-dashboard's source is the private flake input
+  # sing-box-dashboard-src on git.0xdao.app, which the CN builders (lazybox,
+  # cos-stex-builder) cannot reach. A locked input with a narHash is
+  # substituted by its store path before any fetch, so with that path in
+  # cache.0xtau.com a builder evaluates without touching the forge. The same
+  # holds for every fixed-output input of the build (pnpm deps, the
+  # iTerm2-Color-Schemes checkout): their paths depend on name and hash
+  # alone, so they hit for every consumer whatever its nixpkgs, and the
+  # build itself needs no network. The output is pushed too; it hits only
+  # for a consumer whose nixpkgs matches this flake's lock.
+  - name: sing-box-dashboard
+    image: nixos/nix:2.34.8
+    environment:
+      NIKS3_TOKEN:
+        from_secret: niks3_token
+      GITEA_TOKEN:
+        from_secret: gitea_token
+    commands:
+      - |
+        cat >> /etc/nix/nix.conf <<EOF
+        experimental-features = nix-command flakes
+        accept-flake-config = true
+        EOF
+      - umask 077
+      # The fork is private; git (which nix runs for git+https inputs) reads
+      # ~/.netrc.
+      - printf 'machine git.0xdao.app login caoer115 password %s\n' "$GITEA_TOKEN" > "$HOME/.netrc"
+      - pkg='.#packages.x86_64-linux.sing-box-dashboard'
+      - nix build "$pkg" "$pkg.pnpmDeps" "$pkg.colorSchemes" -L
+      - src=$(nix eval --raw "$pkg.src.outPath")
+      - echo "source $src"
+      - test -f ./result/index.html
+      - printf '%s' "$NIKS3_TOKEN" > /tmp/niks3-token
+      - export NIKS3_AUTH_TOKEN_FILE=/tmp/niks3-token
+      - export NIKS3_SERVER_URL=https://niks3.0xtau.com
+      - nix profile install github:Mic92/niks3/780939adecefc2f84be700a6f9ae1cc9385ad240#niks3
+      - niks3 push --pin "osf-sing-box-dashboard-x86_64-linux" ./result
+      - niks3 push --pin "osf-sing-box-dashboard-pnpm-deps" ./result-1
+      - niks3 push --pin "osf-sing-box-dashboard-color-schemes" ./result-2
+      - niks3 push --pin "osf-sing-box-dashboard-src" "$src"
+      - |
+        for p in ./result ./result-1 ./result-2 "$src"; do
+          hash=$(basename "$(readlink -f "$p")" | cut -d- -f1)
           echo "checking https://cache.0xtau.com/$hash.narinfo"
           nix run nixpkgs#curl -- -fsS "https://cache.0xtau.com/$hash.narinfo" | head -3
         done

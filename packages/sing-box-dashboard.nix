@@ -60,4 +60,8 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     cp -r dist $out
     runHook postInstall
   '';
+
+  # For .woodpecker.yml, which pushes every fixed-output input to
+  # cache.0xtau.com; passthru leaves the derivation unchanged.
+  passthru = { inherit colorSchemes; };
 })
