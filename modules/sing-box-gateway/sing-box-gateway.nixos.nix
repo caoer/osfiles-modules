@@ -17,7 +17,7 @@
 #     outboundGroups = { ... };
 #     sourceSubnets = [ "192.168.80.0/24" ];
 #     clashApi.enable = true;
-#     clashApi.secretFile = config.sops.secrets.clash-api-secret.path;
+#     # clashApi.secretFile only when the firewall admits the port publicly
 #   };
 {
   config,
@@ -54,7 +54,30 @@ let
   clashOn = cfg.clashApi.enable;
   dashboardDir = "${cfg.stateDirectory}/dashboard";
   runtimeConfigPath = "/run/${cfg.serviceName}/config.json";
-  configPath = if clashOn then runtimeConfigPath else configTemplate;
+
+  # Credential by listener scope (ZT's rule: every LAN and mesh gets the full
+  # API with no password). The Clash API and the api service (port + 1) take
+  # the secret only when one is given, and one is required only when the
+  # firewall admits either port from public sources: an osf.network service
+  # allowing "public", a global allowedTCPPorts entry, or no firewall at all.
+  apiPorts = [
+    cfg.clashApi.port
+    (cfg.clashApi.port + 1)
+  ];
+  onLoopback = h: lib.hasPrefix "127." h || h == "::1" || h == "localhost";
+  fw = config.networking.firewall;
+  netServices =
+    if options ? osf.network.services then lib.attrValues config.osf.network.services else [ ];
+  publicPorts =
+    fw.allowedTCPPorts ++ map (s: s.port) (lib.filter (s: builtins.elem "public" s.allow) netServices);
+  inRanges = p: lib.any (r: p >= r.from && p <= r.to) fw.allowedTCPPortRanges;
+  clashPublic =
+    clashOn
+    && !onLoopback cfg.clashApi.host
+    && (!fw.enable || lib.any (p: builtins.elem p publicPorts || inRanges p) apiPorts);
+  secretOn = clashOn && cfg.clashApi.secretFile != null;
+  secretSlot = lib.optionalAttrs secretOn { secret = "CLASH_SECRET_PLACEHOLDER"; };
+  configPath = if secretOn then runtimeConfigPath else configTemplate;
   hasSubnets = cfg.sourceSubnets != [ ];
 
   capabilities = [
@@ -101,13 +124,11 @@ let
           {
             port = cfg.clashApi.port;
             host = cfg.clashApi.host;
-            secret = "CLASH_SECRET_PLACEHOLDER";
             dashboardPath = dashboardDir;
           }
+          // secretSlot
         else
           null;
-      # sing-box's api service + dashboard: no secret (the LAN dashboard has
-      # no password); the firewall admits the port like the Clash API's.
       apiService =
         if clashOn then
           {
@@ -115,6 +136,7 @@ let
             host = cfg.clashApi.host;
             dashboardPath = "${cfg.apiDashboardPackage}";
           }
+          // secretSlot
         else
           null;
     }
@@ -148,7 +170,7 @@ let
         fi
         CLASH_SECRET=$(cat "${secretFile}")
         ${pkgs.jq}/bin/jq --arg s "$CLASH_SECRET" \
-          '.experimental.clash_api.secret = $s' \
+          '.experimental.clash_api.secret = $s | (.services[] | select(.secret == "CLASH_SECRET_PLACEHOLDER") | .secret) = $s' \
           ${configTemplate} > ${runtimeConfigPath}
       '';
     in
@@ -429,7 +451,11 @@ in
       secretFile = mkOption {
         type = types.nullOr types.str;
         default = null;
-        description = "Path to file containing the Clash API secret.";
+        description = ''
+          File holding the secret for the Clash API and the api service. Null
+          on a LAN/mesh listener (no credential, ZT's rule); required when the
+          firewall admits either port from public sources (asserted).
+        '';
       };
     };
 
@@ -488,8 +514,8 @@ in
     {
       assertions = [
         {
-          assertion = clashOn -> cfg.clashApi.secretFile != null;
-          message = "osf.sing-box-gateway: clashApi.secretFile must be set when Clash API is enabled.";
+          assertion = clashPublic -> cfg.clashApi.secretFile != null;
+          message = "osf.sing-box-gateway: the firewall admits the Clash API (${cfg.clashApi.host}:${toString cfg.clashApi.port}) or its api service (port + 1) from public sources; set clashApi.secretFile, or admit them from LAN and mesh zones only.";
         }
       ];
 
@@ -498,7 +524,7 @@ in
       # ── sing-box service ───────────────────────────────────────────
       systemd.services.${cfg.serviceName} = {
         description = "sing-box transparent proxy gateway (TUN auto_redirect)";
-        after = cfg.afterServices ++ lib.optional clashOn "sops-nix.service";
+        after = cfg.afterServices ++ lib.optional secretOn "sops-nix.service";
         wants = lib.filter (s: lib.hasSuffix ".target" s) cfg.afterServices;
         wantedBy = [ "multi-user.target" ];
         conflicts = cfg.conflictServices;
@@ -508,7 +534,7 @@ in
           ExecStartPre = [
             "+${dnsBootstrapScript}"
           ]
-          ++ lib.optional clashOn secretInjectionScript
+          ++ lib.optional secretOn secretInjectionScript
           ++ [ "${singBoxPkg}/bin/sing-box check -c ${configPath}" ];
           ExecStopPost = "${dnsBootstrapScript}";
           Restart = "on-failure";
@@ -518,7 +544,7 @@ in
           CapabilityBoundingSet = capabilities;
           StateDirectory = cfg.serviceName;
         }
-        // lib.optionalAttrs clashOn {
+        // lib.optionalAttrs secretOn {
           RuntimeDirectory = cfg.serviceName;
         }
         // lib.optionalAttrs cfg.dns.setSystemResolver {

@@ -562,12 +562,13 @@ let
       # clash_api's /ui/ and the api service's /dashboard/ are different
       # UIs speaking different APIs, so each takes its own path.
       external_ui = clashApi.dashboardPath or "${cacheFilePath}/../dashboard";
-      secret = clashApi.secret or "CLASH_SECRET_PLACEHOLDER";
-    };
+    }
+    // lib.optionalAttrs (clashApi ? secret) { inherit (clashApi) secret; };
   };
 
-  # The api service takes a secret only when apiService names one; without it
-  # the dashboard opens with no password and the firewall alone bounds reach.
+  # The Clash API and the api service take a secret only when their attrset
+  # names one; without it they open with no password and the firewall alone
+  # bounds reach.
   servicesBlock = lib.optionals (apiService != null) [
     (
       {

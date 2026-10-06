@@ -449,10 +449,22 @@ in
           default = wk.localhost;
           example = wk.anyAddr;
           description = ''
-            Bind address for the tproxy sing-box Clash API. Defaults to loopback.
-            Set to ${wk.anyAddr} only with an auth secret (clash_api.secret) and a
-            firewall rule scoping the port to trusted zones — the Clash API is
-            an unauthenticated control plane otherwise.
+            Bind address for the tproxy sing-box Clash API and its api service
+            (port + 1). Defaults to loopback. With ${wk.anyAddr}, the firewall
+            sets the reach: a port admitted from LAN and mesh zones only takes
+            no credential (ZT's rule: the LAN dashboard has no password); a
+            port admitted from "public" needs clashApiSecretFile.
+          '';
+        };
+
+        clashApiSecretFile = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          example = lib.literalExpression "config.sops.secrets.clash-api-secret.path";
+          description = ''
+            Secret for the Clash API and the api service. Null on a LAN/mesh
+            listener; required (asserted by osf.sing-box-gateway) when the
+            firewall admits either port from public sources.
           '';
         };
       };

@@ -181,7 +181,7 @@ lib.mkIf (cfg.enable && ecfg.enable && tp.enable) {
       enable = true;
       port = tp.clashApiPort;
       host = tp.clashApiHost;
-      secretFile = config.sops.secrets.clash-api-secret.path;
+      secretFile = tp.clashApiSecretFile;
     };
 
     afterServices = [
