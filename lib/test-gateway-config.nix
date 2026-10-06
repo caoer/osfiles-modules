@@ -77,8 +77,8 @@ let
       { ip_cidr = [ "192.168.90.0/24" ]; action = "route"; outbound = "coscene-stex"; }
     ];
 
-    clashApi = { port = 9090; host = "0.0.0.0"; secret = "CLASH_SECRET_PLACEHOLDER"; };
-    apiService = { port = 9091; host = "0.0.0.0"; secret = "CLASH_SECRET_PLACEHOLDER"; dashboardPath = "/var/lib/sing-box-tproxy/dashboard"; };
+    clashApi = { port = 9090; host = "0.0.0.0"; secret = "CLASH_SECRET_PLACEHOLDER"; dashboardPath = "/var/lib/sing-box-tproxy/dashboard"; };
+    apiService = { port = 9091; host = "0.0.0.0"; secret = "CLASH_SECRET_PLACEHOLDER"; dashboardPath = "/nix/store/placeholder-sing-box-dashboard"; };
 
     geoCnPath = "/nix/store/placeholder-geo-cn.json";
     geoCnDomainPath = "/nix/store/placeholder-geo-cn-domain.json";

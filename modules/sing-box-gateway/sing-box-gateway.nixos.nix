@@ -102,6 +102,7 @@ let
             port = cfg.clashApi.port;
             host = cfg.clashApi.host;
             secret = "CLASH_SECRET_PLACEHOLDER";
+            dashboardPath = dashboardDir;
           }
         else
           null;
@@ -111,7 +112,7 @@ let
             port = cfg.clashApi.port + 1;
             host = cfg.clashApi.host;
             secret = "CLASH_SECRET_PLACEHOLDER";
-            dashboardPath = dashboardDir;
+            dashboardPath = "${cfg.apiDashboardPackage}";
           }
         else
           null;
@@ -186,7 +187,14 @@ in
     dashboardPackage = mkOption {
       type = types.package;
       default = pkgs.metacubexd;
-      description = "Clash API dashboard package (metacubexd).";
+      description = "Clash API dashboard package (metacubexd), served at /ui/ on the Clash API port.";
+    };
+
+    apiDashboardPackage = mkOption {
+      type = types.package;
+      default = pkgs.sing-box-dashboard;
+      defaultText = lib.literalExpression "pkgs.sing-box-dashboard";
+      description = "sing-box's own dashboard, served at /dashboard/ by the api service on the Clash API port + 1.";
     };
 
     # ── Service identity ────────────────────────────────────────────

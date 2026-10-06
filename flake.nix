@@ -177,9 +177,10 @@
         netTuning = import ./modules/net/net-tuning.nix;
       };
 
-      # Overlay: adds metacubexd to pkgs.
+      # Overlay: adds metacubexd, sing-box-dashboard to pkgs.
       overlays.default = final: prev: {
         metacubexd = final.callPackage ./packages/metacubexd.nix { };
+        sing-box-dashboard = final.callPackage ./packages/sing-box-dashboard.nix { };
       };
 
       packages = forAllSystems (
@@ -207,6 +208,7 @@
           default = paseo;
           codex = pkgs.callPackage ./packages/codex.nix { };
           metacubexd = pkgs.callPackage ./packages/metacubexd.nix { };
+          sing-box-dashboard = pkgs.callPackage ./packages/sing-box-dashboard.nix { };
         }
       );
     };

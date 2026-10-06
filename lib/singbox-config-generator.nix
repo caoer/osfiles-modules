@@ -559,8 +559,9 @@ let
   // lib.optionalAttrs (clashApi != null) {
     clash_api = {
       external_controller = "${clashApi.host}:${toString clashApi.port}";
-      external_ui =
-        if apiService != null then apiService.dashboardPath else "${cacheFilePath}/../dashboard";
+      # clash_api's /ui/ and the api service's /dashboard/ are different
+      # UIs speaking different APIs, so each takes its own path.
+      external_ui = clashApi.dashboardPath or "${cacheFilePath}/../dashboard";
       secret = clashApi.secret or "CLASH_SECRET_PLACEHOLDER";
     };
   };
