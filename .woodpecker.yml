@@ -93,7 +93,9 @@ steps:
   # sing-box-dashboard-src on git.0xdao.app, which the CN builders (lazybox,
   # cos-stex-builder) cannot reach. A locked input with a narHash is
   # substituted by its store path before any fetch, so with that path in
-  # cache.0xtau.com a builder evaluates without touching the forge. The same
+  # cache.0xtau.com a builder evaluates without touching the forge (a builder
+  # that queried the path before this step pushed it keeps that miss for
+  # narinfo-cache-negative-ttl, 1 h by default, and fetches meanwhile). The same
   # holds for every fixed-output input of the build (pnpm deps, the
   # iTerm2-Color-Schemes checkout): their paths depend on name and hash
   # alone, so they hit for every consumer whatever its nixpkgs, and the
