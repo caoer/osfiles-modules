@@ -78,7 +78,7 @@ let
     ];
 
     clashApi = { port = 9090; host = "0.0.0.0"; secret = "CLASH_SECRET_PLACEHOLDER"; dashboardPath = "/var/lib/sing-box-tproxy/dashboard"; };
-    apiService = { port = 9091; host = "0.0.0.0"; secret = "CLASH_SECRET_PLACEHOLDER"; dashboardPath = "/nix/store/placeholder-sing-box-dashboard"; };
+    apiService = { port = 9091; host = "0.0.0.0"; dashboardPath = "/nix/store/placeholder-sing-box-dashboard"; };
 
     geoCnPath = "/nix/store/placeholder-geo-cn.json";
     geoCnDomainPath = "/nix/store/placeholder-geo-cn-domain.json";

@@ -106,12 +106,13 @@ let
           }
         else
           null;
+      # sing-box's api service + dashboard: no secret (the LAN dashboard has
+      # no password); the firewall admits the port like the Clash API's.
       apiService =
         if clashOn then
           {
             port = cfg.clashApi.port + 1;
             host = cfg.clashApi.host;
-            secret = "CLASH_SECRET_PLACEHOLDER";
             dashboardPath = "${cfg.apiDashboardPackage}";
           }
         else
@@ -147,7 +148,7 @@ let
         fi
         CLASH_SECRET=$(cat "${secretFile}")
         ${pkgs.jq}/bin/jq --arg s "$CLASH_SECRET" \
-          '.experimental.clash_api.secret = $s | (.services[] | select(.secret == "CLASH_SECRET_PLACEHOLDER") | .secret) = $s' \
+          '.experimental.clash_api.secret = $s' \
           ${configTemplate} > ${runtimeConfigPath}
       '';
     in

@@ -566,18 +566,22 @@ let
     };
   };
 
+  # The api service takes a secret only when apiService names one; without it
+  # the dashboard opens with no password and the firewall alone bounds reach.
   servicesBlock = lib.optionals (apiService != null) [
-    {
-      type = "api";
-      tag = "api";
-      listen = apiService.host;
-      listen_port = apiService.port;
-      secret = apiService.secret or "CLASH_SECRET_PLACEHOLDER";
-      dashboard = {
-        enabled = true;
-        path = apiService.dashboardPath;
-      };
-    }
+    (
+      {
+        type = "api";
+        tag = "api";
+        listen = apiService.host;
+        listen_port = apiService.port;
+        dashboard = {
+          enabled = true;
+          path = apiService.dashboardPath;
+        };
+      }
+      // lib.optionalAttrs (apiService ? secret) { inherit (apiService) secret; }
+    )
   ];
 
   config = {
