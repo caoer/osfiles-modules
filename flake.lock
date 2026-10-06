@@ -428,11 +428,11 @@
     "sing-box-dashboard-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1791324756,
-        "narHash": "sha256-iGRg7OzON6pGUPfuBZIs6H8q22ik7S6RMNj+Hajcxkw=",
+        "lastModified": 1791325479,
+        "narHash": "sha256-Yo85XgMomdCc2KRxpf2G8Ju+chIXvQex8ruUWc2Q3Go=",
         "ref": "main",
-        "rev": "d5c8b002102d984f48a3371eb3e8bc5112157a3e",
-        "revCount": 97,
+        "rev": "efbb2daefce3064cdd72fd2a63e6a2c53ced8436",
+        "revCount": 98,
         "type": "git",
         "url": "https://git.0xdao.app/caoer115/sing-box-dashboard.git"
       },
