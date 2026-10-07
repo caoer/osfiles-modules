@@ -53,6 +53,8 @@ let
 
   clashOn = cfg.clashApi.enable;
   dashboardDir = "${cfg.stateDirectory}/dashboard";
+  # The api service's /dashboard/, staged at each start (the package's stage).
+  apiDashboardDir = "${cfg.stateDirectory}/sing-box-dashboard";
   runtimeConfigPath = "/run/${cfg.serviceName}/config.json";
 
   # Credential by listener scope (ZT's rule: every LAN and mesh gets the full
@@ -134,7 +136,7 @@ let
           {
             port = cfg.clashApi.port + 1;
             host = cfg.clashApi.host;
-            dashboardPath = "${cfg.apiDashboardPackage}";
+            dashboardPath = apiDashboardDir;
           }
           // secretSlot
         else
@@ -217,7 +219,7 @@ in
       type = types.package;
       default = pkgs.sing-box-dashboard;
       defaultText = lib.literalExpression "pkgs.sing-box-dashboard";
-      description = "sing-box's own dashboard, served at /dashboard/ by the api service on the Clash API port + 1.";
+      description = "sing-box's own dashboard, served at /dashboard/ by the api service on the Clash API port + 1, from the copy its passthru `stage` builds in the state directory at each start.";
     };
 
     # ── Service identity ────────────────────────────────────────────
@@ -534,6 +536,7 @@ in
           ExecStartPre = [
             "+${dnsBootstrapScript}"
           ]
+          ++ lib.optional clashOn "${cfg.apiDashboardPackage.stage} ${apiDashboardDir}"
           ++ lib.optional secretOn secretInjectionScript
           ++ [ "${singBoxPkg}/bin/sing-box check -c ${configPath}" ];
           ExecStopPost = "${dnsBootstrapScript}";

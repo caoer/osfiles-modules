@@ -6,6 +6,9 @@
   pnpmConfigHook,
   pnpm_11,
   nodejs_24,
+  writeShellScript,
+  coreutils,
+  findutils,
   src,
 }:
 
@@ -61,7 +64,39 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     runHook postInstall
   '';
 
-  # For .woodpecker.yml, which pushes every fixed-output input to
-  # cache.0xtau.com; passthru leaves the derivation unchanged.
-  passthru = { inherit colorSchemes; };
+  passthru = {
+    # For .woodpecker.yml, which pushes every fixed-output input to
+    # cache.0xtau.com; passthru leaves the derivation unchanged.
+    inherit colorSchemes;
+
+    # `stage <dir>` rebuilds <dir> as the directory to give sing-box's
+    # dashboard.path; run it before sing-box starts (ExecStartPre). sing-box
+    # serves the files with Go's http.FileServer, whose Last-Modified is the
+    # file mtime: from the store that is 1970-01-01T00:00:01 for every build,
+    # so a browser keeps index.html heuristically fresh for years and every
+    # revalidation answers 304 — a deployed build never reaches it. The staged
+    # copy gives index.html, sw.js and the other unhashed files mtime 0, which
+    # the file server treats as unknown: no Last-Modified, If-Modified-Since
+    # ignored, so they are fetched whole on every load. assets/ (content-
+    # hashed names) stays a store symlink and keeps its long cache life.
+    stage = writeShellScript "sing-box-dashboard-stage" ''
+      set -eu
+      PATH=${lib.makeBinPath [ coreutils findutils ]}
+      src=${finalAttrs.finalPackage}
+      dest=''${1:?usage: sing-box-dashboard-stage <dir>}
+      rm -rf "$dest.new"
+      mkdir -p "$dest.new"
+      for entry in "$src"/*; do
+        if [ "''${entry##*/}" = assets ]; then
+          ln -s "$entry" "$dest.new/assets"
+        else
+          cp -R "$entry" "$dest.new/"
+        fi
+      done
+      chmod -R u+w "$dest.new"
+      find "$dest.new" -mindepth 1 -path "$dest.new/assets" -prune -o -exec touch -h -d @0 {} +
+      rm -rf "$dest"
+      mv "$dest.new" "$dest"
+    '';
+  };
 })
