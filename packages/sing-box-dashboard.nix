@@ -79,11 +79,14 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     # the file server treats as unknown: no Last-Modified, If-Modified-Since
     # ignored, so they are fetched whole on every load. assets/ (content-
     # hashed names) stays a store symlink and keeps its long cache life.
+    # `stage <dir> <settings.json>` also places that file as the dashboard's
+    # settings.json (fork src/app/siteSettings.ts: e.g. the Config tab's label).
     stage = writeShellScript "sing-box-dashboard-stage" ''
       set -eu
       PATH=${lib.makeBinPath [ coreutils findutils ]}
       src=${finalAttrs.finalPackage}
-      dest=''${1:?usage: sing-box-dashboard-stage <dir>}
+      dest=''${1:?usage: sing-box-dashboard-stage <dir> [settings.json]}
+      settings=''${2:-}
       rm -rf "$dest.new"
       mkdir -p "$dest.new"
       for entry in "$src"/*; do
@@ -93,6 +96,9 @@ stdenvNoCC.mkDerivation (finalAttrs: {
           cp -R "$entry" "$dest.new/"
         fi
       done
+      if [ -n "$settings" ]; then
+        cp "$settings" "$dest.new/settings.json"
+      fi
       chmod -R u+w "$dest.new"
       find "$dest.new" -mindepth 1 -path "$dest.new/assets" -prune -o -exec touch -h -d @0 {} +
       rm -rf "$dest"
