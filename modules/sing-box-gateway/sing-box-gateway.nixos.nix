@@ -124,7 +124,7 @@ let
           {
             port = cfg.clashApi.port;
             host = cfg.clashApi.host;
-            dashboardPath = dashboardDir;
+            dashboardPath = if dashboardPkg != null then dashboardDir else null;
           }
           // secretSlot
         else
@@ -208,9 +208,9 @@ in
     };
 
     dashboardPackage = mkOption {
-      type = types.package;
+      type = types.nullOr types.package;
       default = pkgs.metacubexd;
-      description = "Clash API dashboard package (metacubexd), served at /ui/ on the Clash API port.";
+      description = "Clash API dashboard package (metacubexd), served at /ui/ on the Clash API port. Null serves no /ui/: the Clash API alone.";
     };
 
     apiDashboardPackage = mkOption {
@@ -568,7 +568,7 @@ in
       ];
 
       # metacubexd dashboard assets
-      systemd.tmpfiles.rules = lib.mkIf clashOn [
+      systemd.tmpfiles.rules = lib.mkIf (clashOn && dashboardPkg != null) [
         "L+ ${dashboardDir} - - - - ${dashboardPkg}"
       ];
     }

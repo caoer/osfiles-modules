@@ -559,8 +559,11 @@ let
   // lib.optionalAttrs (clashApi != null) {
     clash_api = {
       external_controller = "${clashApi.host}:${toString clashApi.port}";
-      # clash_api's /ui/ and the api service's /dashboard/ are different
-      # UIs speaking different APIs, so each takes its own path.
+    }
+    # clash_api's /ui/ and the api service's /dashboard/ are different UIs
+    # speaking different APIs, so each takes its own path. A null
+    # dashboardPath serves no /ui/: the Clash API alone.
+    // lib.optionalAttrs ((clashApi.dashboardPath or "") != null) {
       external_ui = clashApi.dashboardPath or "${cacheFilePath}/../dashboard";
     }
     // lib.optionalAttrs (clashApi ? secret) { inherit (clashApi) secret; };
