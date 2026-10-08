@@ -7,22 +7,22 @@
 }:
 
 let
-  version = "1.15.0-alpha.9";
+  version = "1.15.0-alpha.10";
 
   assets = {
     "x86_64-linux" = {
       url = "https://github.com/SagerNet/sing-box/releases/download/v${version}/sing-box-${version}-linux-amd64.tar.gz";
-      sha256 = "sha256-iu3h9ZNahW2TnGFBNnfcLn4+sARu+8IrmoaSKebaJ58=";
+      sha256 = "sha256-wX2idbl60e0RodG0KNNxWHttAU/Xy7iwDZY6WitM2G0=";
       sourceRoot = "sing-box-${version}-linux-amd64";
     };
     "aarch64-linux" = {
       url = "https://github.com/SagerNet/sing-box/releases/download/v${version}/sing-box-${version}-linux-arm64.tar.gz";
-      sha256 = "sha256-eKSn/FiMR9gQ+oR16M6/Vrr9xMIcvQG8/jE/q/xV5Qc=";
+      sha256 = "sha256-nYC+EEgUH0A6GTYtVDAyIylXGeUScFSn5y1slTwJsiA=";
       sourceRoot = "sing-box-${version}-linux-arm64";
     };
     "aarch64-darwin" = {
       url = "https://github.com/SagerNet/sing-box/releases/download/v${version}/sing-box-${version}-darwin-arm64.tar.gz";
-      sha256 = "sha256-rfFCfd7VNpZSbZDjk5JGFRZwnl2aeHFSPYDU/pAk6HE=";
+      sha256 = "sha256-cJKf15G96+BoJyqUUl4Tj9/501IQA/ovMog49XGE92A=";
       sourceRoot = "sing-box-${version}-darwin-arm64";
     };
   };
