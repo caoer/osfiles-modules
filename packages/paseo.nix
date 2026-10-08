@@ -7,8 +7,8 @@
 # msgpackr-extract). All three addons are N-API, so nixpkgs' node runs the
 # bundle headless — no Electron, no display, no npm install, no npmDepsHash.
 #
-# Build: extract the asar (paseo-asar-extract.cjs), apply
-# paseo-pid-lock-boot-id.patch, patchelf the addons against libstdc++, wrap node with the same two entry points the source build had:
+# Build: extract the asar (paseo-asar-extract.cjs), patchelf the addons against
+# libstdc++, wrap node with the same two entry points the source build had:
 #   bin/paseo-server  supervisor-entrypoint.js (systemd ExecStart)
 #   bin/paseo         the CLI
 # The desktop's web UI (resources/app-dist) is placed where the server looks
@@ -65,13 +65,8 @@ stdenv.mkDerivation rec {
     find $lib -name '*.musl.node' -delete
     find $lib -depth -type d -empty -delete
 
-    # The daemon's pid lock compared by boot id, so a clock step after a VM
-    # resume does not read the running daemon as dead (the patch's header).
-    # A paseo bump whose pid-lock.js no longer takes it fails here: re-read
-    # upstream's pid-lock.ts, and drop the patch once upstream fixes it.
-    for d in dist/server/server dist/src/server; do
-      patch --batch --forward -p1 -d $lib/node_modules/@getpaseo/server/$d < ${./paseo-pid-lock-boot-id.patch}
-    done
+    # Upstream's pid lock carries the kernel boot id (pid-lock.js bootId), so a
+    # clock step after a VM resume does not read the running daemon as dead.
 
     mkdir -p $lib/node_modules/@getpaseo/server/dist/server
     cp -r resources/app-dist $lib/node_modules/@getpaseo/server/dist/server/web-ui
