@@ -15,13 +15,13 @@
 }:
 
 let
-  version = "0.161.0";
+  version = "0.162.0";
 
   assets = {
     "x86_64-linux" = {
       npmPlatform = "linux-x64";
       target = "x86_64-unknown-linux-musl";
-      sha256 = "0y4ri5fiwjfmjbvzv6hl80rsz95nqq9jnysjfssm3ravfp1043nm";
+      sha256 = "10y90rmysv31nyq0kqikkndbf513p3qjds85npdm6vc9mpkl5lyv";
     };
   };
 
