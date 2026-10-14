@@ -131,10 +131,10 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1791920215,
-        "narHash": "sha256-aKpe5nNVbe7Wl7oX5/LzSlQmYwpdsWVSR2U1Ep9pO68=",
+        "lastModified": 1791933489,
+        "narHash": "sha256-sRA4O2Cf+4BzpPQtZ6IvHD0SaE/hCQPUkLJnrFp06Rk=",
         "ref": "main",
-        "rev": "f16937bcbbd8b4faaa950214d53c4ec7be5841a6",
+        "rev": "5539016588b33b0097fd24cbc2c167a5db02cdbd",
         "shallow": true,
         "type": "git",
         "url": "https://git.0xdao.app/caoer115/herdr"
