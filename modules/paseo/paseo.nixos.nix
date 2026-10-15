@@ -176,12 +176,14 @@ in
         "osf.paseo.users.${name}: set either paseoConfig (dynamic) or paseoConfigFile (legacy)";
       lib.nameValuePair "paseo-${name}" {
         description = "Paseo daemon for ${name} - self-hosted daemon for AI coding agents";
+        # Dynamic mode: wrappers must exist before gen script runs, so paseo is
+        # ordered after the installer and pulls it in — but never bound to it:
+        # a failed install leaves paseo on the install already on disk, and an
+        # installer re-run does not restart paseo (and its agents).
         after = [ "network-online.target" ]
-          # Dynamic mode: wrappers must exist before gen script runs.
           ++ lib.optional useDynamic "ucc-update-${name}.service";
         wants = [ "network-online.target" ]
           ++ lib.optional useDynamic "ucc-update-${name}.service";
-        requires = lib.optional useDynamic "ucc-update-${name}.service";
         wantedBy = [ "multi-user.target" ];
 
         # Clean restart (fleet stability). paseo runs its agents as DIRECT
