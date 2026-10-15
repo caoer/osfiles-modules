@@ -86,12 +86,14 @@ in
 
       # Stay green until the operator pushes the secrets post-activation; the
       # consumer's push-secrets path restarts this unit once they land.
-      unitConfig.ConditionPathExists = [
-        cfg.installerTokenPath
-        cfg.encryptionPasswordPath
-      ];
+      unitConfig = agentLib.installerRetry.unitConfig // {
+        ConditionPathExists = [
+          cfg.installerTokenPath
+          cfg.encryptionPasswordPath
+        ];
+      };
 
-      serviceConfig = {
+      serviceConfig = agentLib.installerRetry.serviceConfig // {
         Type = "oneshot";
         User = cfg.username;
         Environment = [ "PATH=${installerDeps}:/usr/local/bin:/usr/bin:/bin" ];

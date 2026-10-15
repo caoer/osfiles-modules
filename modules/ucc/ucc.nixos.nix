@@ -288,11 +288,13 @@ let
         path = installerPackages;
         environment = nixLdEnvironment;
         enable = ucfg.bootFetch;
+        inherit (agentLib.installerRetry) unitConfig;
         serviceConfig = {
           Type = "oneshot";
           User = name;
           RemainAfterExit = true;
         }
+        // agentLib.installerRetry.serviceConfig
         // lib.optionalAttrs ucfg.bootFetch {
           # Opted-in accounts run the installer itself under the lingering user
           # manager. Every process it starts then inherits a user cgroup instead

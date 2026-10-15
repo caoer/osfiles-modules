@@ -146,11 +146,13 @@ in
     {
       systemd.services.paseo = {
         description = "Paseo - self-hosted daemon for AI coding agents";
+        # Ordered after the installer and pulled in by it, never bound to it:
+        # a failed install leaves paseo on the install already on disk, and an
+        # installer re-run does not restart paseo (and its agents).
         after = [ "network-online.target" ]
           ++ lib.optional useDynamic "ucc-update.service";
         wants = [ "network-online.target" ]
           ++ lib.optional useDynamic "ucc-update.service";
-        requires = lib.optional useDynamic "ucc-update.service";
         wantedBy = [ "multi-user.target" ];
 
         serviceConfig = {

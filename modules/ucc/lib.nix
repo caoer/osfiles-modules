@@ -108,6 +108,24 @@ in
   # foreign.secrets on Foreign), so this builder is platform-neutral.
   installerBaseUrl = "https://get-ucc.sui.pics/installer";
 
+  # Bounded retry for the installer unit (NixOS ucc-update-<user>, Foreign
+  # ucc-update): a transient download error (curl 56, an EOF from
+  # get-ucc.sui.pics) re-runs the install 2 min later, at most 4 starts in
+  # 10 min, then the unit stays failed. RestartMode stays "normal", so the
+  # failed start job still completes and nothing ordered after the installer
+  # (paseo) waits on the retries. A manual start counts against the same
+  # limit; `systemctl reset-failed <unit>` clears it.
+  installerRetry = {
+    unitConfig = {
+      StartLimitIntervalSec = "10min";
+      StartLimitBurst = 4;
+    };
+    serviceConfig = {
+      Restart = "on-failure";
+      RestartSec = "2min";
+    };
+  };
+
   # The one settings.json writer for both module paths (the
   # agent-claude-settings-<user> unit in ucc.nixos.nix, the HM activation in
   # ucc.nix): merge the nix-declared OVERRIDES onto each profile's file, then
