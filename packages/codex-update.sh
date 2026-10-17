@@ -38,9 +38,12 @@ complete() {
     [ "$(jq -r .version "$1/codex-package.json")" = "$2" ]
 }
 
+pin=""
+if [ -s "$root/pin" ]; then pin=$(tr -d '[:space:]' <"$root/pin"); fi
+
 manifest=""
-if [ -s "$root/pin" ]; then
-  want=$(tr -d '[:space:]' <"$root/pin")
+if [ -n "$pin" ]; then
+  want=$pin
   from="pin"
 else
   from="latest"
@@ -100,7 +103,7 @@ fi
 # Keep the current, the previous and the pinned version; drop the rest unless a
 # running process still executes from one (a seat on an older codex finds its
 # rg, bwrap and helpers next to its own binary).
-keep=" $want $(cat "$root/previous" 2>/dev/null || true) $(tr -d '[:space:]' <"$root/pin" 2>/dev/null || true) "
+keep=" $want $(cat "$root/previous" 2>/dev/null || true) $pin "
 for d in "$root"/*/; do
   d=${d%/}
   v=${d##*/}
