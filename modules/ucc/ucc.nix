@@ -41,6 +41,10 @@ let
   # profile's file, then the daemon's policy on top — and the rule about which
   # keys may be declared: lib.nix mkSettingsSyncScript.
   settingsFile = pkgs.writeText "claude-settings.json" (builtins.toJSON cfg.claudeSettings);
+
+  # codex.install = "user": the codex-update user unit owns the binary.
+  codexUser = cfg.codex.enable && cfg.codex.install == "user";
+  codexUpdate = pkgs.callPackage ../../packages/codex-update.nix { };
   applyClaudeSettings = agentLib.mkSettingsSyncScript {
     name = config.home.username;
     inherit home settingsFile;
@@ -139,6 +143,25 @@ in
       '';
     };
 
+    codex.install = lib.mkOption {
+      type = lib.types.enum [
+        "nix"
+        "user"
+      ];
+      default = "nix";
+      description = ''
+        Where the codex binary comes from. "nix": codex.package in
+        home.packages, so a codex version change is a closure change (a guest
+        reboot on a desk). "user" (Linux): the codex-update user unit and its
+        timer (every 6 h, and 2 min after the timer starts) install npm's
+        latest (or ~/.local/share/codex/pin) into ~/.local/share/codex/<version>
+        and point ~/.local/bin/codex at it, which sits ahead of the profile on
+        PATH; codex.package leaves home.packages. A codex upgrade is then
+        `systemctl --user start codex-update`, never a rebuild. bubblewrap and
+        codexConfigSource stay declared either way.
+      '';
+    };
+
     codexConfigSource = lib.mkOption {
       type = sourceType;
       default = null;
@@ -173,6 +196,31 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = codexUser -> pkgs.stdenv.isLinux;
+        message = "osf.ucc.codex.install = \"user\" is Linux-only (a systemd user unit).";
+      }
+    ];
+
+    systemd.user = lib.mkIf codexUser {
+      services.codex-update = {
+        Unit.Description = "codex CLI at user level: npm latest (or ~/.local/share/codex/pin) -> ~/.local/bin/codex";
+        Service = {
+          Type = "oneshot";
+          ExecStart = "${codexUpdate}/bin/codex-update";
+        };
+      };
+      timers.codex-update = {
+        Unit.Description = "codex-update every 6 h";
+        Timer = {
+          OnActiveSec = "2min";
+          OnUnitActiveSec = "6h";
+        };
+        Install.WantedBy = [ "timers.target" ];
+      };
+    };
+
     home = {
       sessionPath = [
         "${home}/.local/bin"
@@ -184,7 +232,8 @@ in
       # bubblewrap: codex's Linux sandbox looks for bwrap on PATH and only
       # falls back to its bundled copy with an error in the daemon log.
       packages = lib.optionals cfg.codex.enable (
-        [ cfg.codex.package ] ++ lib.optional pkgs.stdenv.isLinux pkgs.bubblewrap
+        lib.optional (cfg.codex.install == "nix") cfg.codex.package
+        ++ lib.optional pkgs.stdenv.isLinux pkgs.bubblewrap
       );
 
       file = {

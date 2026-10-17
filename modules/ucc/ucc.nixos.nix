@@ -25,7 +25,9 @@
 #                              dangling one as valid, so without this nothing
 #                              provisions the file and agents load no
 #                              user-scope layer.
-#   codex CLI (flake-pinned)   when codex.enable (paseo's native provider)
+#   codex CLI (flake-pinned)   when codex.enable (paseo's native provider);
+#                              codex.install = "user" swaps it for the
+#                              codex-update user unit (npm latest, no rebuild)
 #   ENCRYPTION_PASSWORD        exported into that user's shells from the sops
 #                              secret — the env `ucc-cli update` demands when
 #                              the user runs it by hand
@@ -170,6 +172,18 @@ let
         type = lib.types.bool;
         default = true;
         description = "Install the OpenAI codex CLI (nixpkgs) for this user (paseo's native codex provider drives it).";
+      };
+      codex.install = lib.mkOption {
+        type = lib.types.enum [
+          "nix"
+          "user"
+        ];
+        default = "nix";
+        description = ''
+          "nix": the flake-pinned codex in this user's home.packages. "user":
+          the codex-update user unit keeps ~/.local/bin/codex at npm's latest
+          outside the closure (modules/ucc/ucc.nix osf.ucc.codex.install).
+        '';
       };
     };
   });
@@ -561,6 +575,7 @@ in
         systemPromptSource = ucfg.systemPromptSource;
         claudeMdSource = ucfg.claudeMdSource;
         codex.enable = ucfg.codex.enable;
+        codex.install = ucfg.codex.install;
         # codex.package: ucc.nix defaults it to the flake-pinned codex build.
         # claudeSettings: stays null here — the NixOS path owns the settings
         # deploy via agent-claude-settings-<user> (no double-apply).
