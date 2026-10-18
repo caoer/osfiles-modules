@@ -219,7 +219,14 @@
           };
         in
         {
-          paseo = paseoPkg;
+          # aarch64-darwin: upstream's 0.11.4 release run headless under nixpkgs'
+          # node (packages/paseo-headless.nix § Platforms), for Macs that run the
+          # daemon without Paseo.app. Every other system keeps the source build.
+          paseo =
+            if system == "aarch64-darwin" then
+              pkgs.callPackage ./packages/paseo-headless.nix { }
+            else
+              paseoPkg;
           default = paseoPkg;
           kimi-code = pkgs.callPackage ./packages/kimi-code.nix { };
           # Prebuilt vendor binary, all four systems — exposed so a host can
