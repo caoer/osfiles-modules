@@ -210,6 +210,12 @@
           # Guard is upstream's system set, not ours — see the input comment.
           hunk = inputs.hunk.packages.${system}.default;
         }
+        // nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") {
+          # Upstream's 0.11.4 release run headless under nixpkgs' node, for
+          # Macs that run the daemon without Paseo.app
+          # (packages/paseo-headless.nix § Platforms).
+          paseo = pkgs.callPackage ./packages/paseo-headless.nix { };
+        }
         // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") rec {
           # THE central paseo pin for the whole fleet — upstream's Linux x64
           # release; bump `version` + `hash` in packages/paseo.nix.
