@@ -1,7 +1,8 @@
-# packages/paseo.nix — the fleet's paseo, taken from upstream's Linux release.
+# packages/paseo.nix — the fleet's paseo, taken from upstream's desktop release.
 #
-# getpaseo/paseo publishes `Paseo-<v>-x64.tar.gz` on every GitHub release: the
-# Electron desktop bundle, whose resources/app.asar carries the complete daemon
+# getpaseo/paseo publishes `Paseo-<v>-x64.tar.gz` (Linux) and
+# `Paseo-<v>-arm64.zip` (macOS) on every GitHub release: the Electron desktop
+# bundle, whose app.asar carries the complete daemon
 # and CLI (@getpaseo/server, @getpaseo/cli and their node_modules) and whose
 # app.asar.unpacked carries the native addons (node-pty, sherpa-onnx,
 # msgpackr-extract). All three addons are N-API, so nixpkgs' node runs the
@@ -15,7 +16,14 @@
 # for its bundled web UI (dist/server/web-ui); it is served only when
 # features.webUi is enabled.
 #
-# Upstream ships Linux x64 only, so this package is x86_64-linux only.
+# Platforms: x86_64-linux (the tarball) and aarch64-darwin (the zip). On macOS
+# the headless daemon is the point: run from Paseo.app, every process the daemon
+# spawns is attributed to the notarized app, and on macOS 26.7 tccd's
+# stapled-ticket registration for it deadlocks syspolicyd so every first exec
+# on the host hangs. Under nixpkgs' node the spawns are attributed to node.
+# The macOS build also carries the bundle's builtin-plugins (the server's
+# usage sources and providers) and restores the execute bits the asar
+# extraction drops from app.asar.unpacked (esbuild, node-pty's spawn-helper).
 #
 # Bump: set `version`, then `nix store prefetch-file <url>` for `hash`.
 # The tarball is a fixed-output path, identical under every nixpkgs, and CI
@@ -29,25 +37,46 @@
   asar,
   makeWrapper,
   autoPatchelfHook,
+  unzip,
 }:
 let
   nodejs = nodejs_22;
+  inherit (stdenv.hostPlatform) isDarwin;
+  release =
+    {
+      x86_64-linux = {
+        asset = "x64.tar.gz";
+        hash = "sha256-kfTp0DGu+t/tqDyvSv9C6Vj9txASAgZ/Z4LfbyNHZGI=";
+        resources = "resources";
+        prebuild = "linux-x64";
+        note = "Linux x64 only";
+      };
+      aarch64-darwin = {
+        asset = "arm64.zip";
+        hash = "sha256-EuxtSOQqhhA9++q7CpoJXjwG+vE2UAVee+FfJFWv8Dw=";
+        resources = "Contents/Resources";
+        prebuild = "darwin-arm64";
+        note = "macOS arm64 only";
+      };
+    }
+    .${stdenv.hostPlatform.system}
+      or (throw "paseo: no upstream release for ${stdenv.hostPlatform.system}");
 in
 stdenv.mkDerivation rec {
   pname = "paseo";
   version = "0.11.4";
 
   src = fetchurl {
-    url = "https://github.com/getpaseo/paseo/releases/download/v${version}/Paseo-${version}-x64.tar.gz";
-    hash = "sha256-kfTp0DGu+t/tqDyvSv9C6Vj9txASAgZ/Z4LfbyNHZGI=";
+    url = "https://github.com/getpaseo/paseo/releases/download/v${version}/Paseo-${version}-${release.asset}";
+    inherit (release) hash;
   };
 
   nativeBuildInputs = [
     nodejs
     makeWrapper
-    autoPatchelfHook
-  ];
-  buildInputs = [ stdenv.cc.cc.lib ];
+  ]
+  ++ (if isDarwin then [ unzip ] else [ autoPatchelfHook ]);
+  buildInputs = lib.optionals (!isDarwin) [ stdenv.cc.cc.lib ];
 
   dontConfigure = true;
   dontBuild = true;
@@ -57,11 +86,11 @@ stdenv.mkDerivation rec {
     runHook preInstall
 
     lib=$out/lib/paseo
-    NODE_PATH=${asar}/lib/node_modules node ${./paseo-asar-extract.cjs} resources/app.asar $lib
+    NODE_PATH=${asar}/lib/node_modules node ${./paseo-asar-extract.cjs} ${release.resources}/app.asar $lib
 
-    # Linux x64 only: drop other platforms' prebuilds and dirs left empty by
+    # ${release.note}: drop other platforms' prebuilds and dirs left empty by
     # entries upstream strips from the release.
-    find $lib -path '*/prebuilds/*' -prune -type d ! -name linux-x64 -exec rm -rf {} +
+    find $lib -path '*/prebuilds/*' -prune -type d ! -name ${release.prebuild} -exec rm -rf {} +
     find $lib -name '*.musl.node' -delete
     find $lib -depth -type d -empty -delete
 
@@ -69,10 +98,15 @@ stdenv.mkDerivation rec {
     # clock step after a VM resume does not read the running daemon as dead.
 
     mkdir -p $lib/node_modules/@getpaseo/server/dist/server
-    cp -r resources/app-dist $lib/node_modules/@getpaseo/server/dist/server/web-ui
-
-    for pty in $lib/node_modules/node-pty/prebuilds/linux-x64/pty.node; do
-      [ -f "$pty" ] || { echo "paseo: node-pty linux-x64 pty.node missing from the release" >&2; exit 1; }
+    cp -r ${release.resources}/app-dist $lib/node_modules/@getpaseo/server/dist/server/web-ui
+    ${lib.optionalString isDarwin ''
+      cp -r ${release.resources}/builtin-plugins $lib/node_modules/@getpaseo/server/dist/server/builtin-plugins
+      (cd ${release.resources}/app.asar.unpacked && find . -type f -perm -u+x) | while IFS= read -r f; do
+        [ ! -f "$lib/$f" ] || chmod +x "$lib/$f"
+      done
+    ''}
+    for pty in $lib/node_modules/node-pty/prebuilds/${release.prebuild}/pty.node; do
+      [ -f "$pty" ] || { echo "paseo: node-pty ${release.prebuild} pty.node missing from the release" >&2; exit 1; }
     done
 
     mkdir -p $out/bin
@@ -92,7 +126,10 @@ stdenv.mkDerivation rec {
     homepage = "https://github.com/getpaseo/paseo";
     license = lib.licenses.agpl3Plus;
     mainProgram = "paseo";
-    platforms = [ "x86_64-linux" ];
+    platforms = [
+      "x86_64-linux"
+      "aarch64-darwin"
+    ];
     sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
   };
 }
