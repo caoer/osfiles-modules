@@ -48,11 +48,16 @@ let
     # by the minimax- prefix (longest-key segment rules still prefer zenmux when
     # both match, e.g. minimax/minimax-m3 inside the zenmux catalog is just a
     # model id, not a provider name).
+    # No isDefault, for the glm/zenmux reason: this catalog serves minimax-us
+    # and minimax-vol, and each wrapper pins its own model via ANTHROPIC_MODEL.
+    # MiniMax-M3.1-Flash is served by the coding plan (minimax-us) only; the
+    # Volcengine plan answers that id with minimax-m3.
     minimax = {
       label = "MiniMax";
       disallowedTools = [ "WebSearch" ];
       models = [
-        { id = "MiniMax-M3[1m]"; label = "MiniMax M3 (1M)"; isDefault = true; }
+        { id = "MiniMax-M3.1-Flash[1m]"; label = "MiniMax M3.1 Flash (1M)"; }
+        { id = "MiniMax-M3[1m]"; label = "MiniMax M3 (1M)"; }
         { id = "minimax-m3"; label = "MiniMax M3"; }
       ];
     };
