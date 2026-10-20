@@ -373,12 +373,52 @@ in
           )')
       fi
 
-      # Merge base config + providers → final config.json
+      # Merge base config + providers → final config.json. Written to a temp
+      # file and renamed into place: the regen also runs beside a live daemon
+      # (mkPaseoConfigApplyScript), which must never read a half-written file;
+      # the rename also replaces a stale symlink rather than writing through it.
+      TMP="$CONFIG.tmp.$$"
       ${pkgs.jq}/bin/jq --argjson providers "$PROVIDERS" \
-        '.agents.providers = $providers' "$BASE" > "$CONFIG"
-
-      chmod 0600 "$CONFIG"
+        '.agents.providers = $providers' "$BASE" > "$TMP"
+      chmod 0600 "$TMP"
+      ${pkgs.coreutils}/bin/mv -f "$TMP" "$CONFIG"
       echo "paseo-gen-config: $(echo "$PROVIDERS" | ${pkgs.jq}/bin/jq 'length') provider(s)"
+    '';
+
+  # --- Apply a config change to a running daemon (the switch path) ---
+  #
+  # The daemon unit regenerates config.json only in its ExecStartPre, and it is
+  # restartIfChanged=false (a restart kills its agents), so a switch alone never
+  # lands a new config. This script is the ExecStart of a oneshot unit that
+  # embeds the regen command: any config change changes the unit, the switch
+  # re-runs it, and it regenerates config.json, then asks a running daemon to
+  # re-read it (`paseo daemon reload` over the daemon's local credential; no
+  # restart, agents untouched). Paths the daemon cannot apply live (listen,
+  # relay endpoint, …) come back as restartRequiredPaths and apply on the next
+  # deliberate restart. A daemon that is not running reads the file at start.
+  # A failed regen fails the unit; a failed reload only warns: the file is on
+  # disk and the next start applies it.
+  mkPaseoConfigApplyScript =
+    {
+      name,
+      paseoHome,
+      regen, # shell command that writes config.json atomically
+      paseoPackage,
+      daemonUnit,
+      systemctl,
+    }:
+    pkgs.writeShellScript "paseo-apply-config-${name}" ''
+      set -euo pipefail
+      ${regen}
+      if ! ${systemctl} is-active --quiet ${daemonUnit}; then
+        echo "paseo-apply-config: ${daemonUnit} not running; config.json applies at its start"
+        exit 0
+      fi
+      if out=$(${pkgs.coreutils}/bin/env -u PASEO_PASSWORD ${paseoPackage}/bin/paseo daemon reload --home ${paseoHome} --json 2>&1); then
+        echo "paseo-apply-config: reloaded: $(echo "$out" | ${pkgs.jq}/bin/jq -c '{appliedPaths, restartRequiredPaths, overrideControlledPaths}' 2>/dev/null || echo "$out")"
+      else
+        echo "paseo-apply-config: WARNING reload failed; config.json is on disk and applies on the next restart of ${daemonUnit}: $out" >&2
+      fi
     '';
 
   # Generate the static base config JSON (everything except agents.providers).

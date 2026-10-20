@@ -18,8 +18,11 @@
 # Clean restart: system-manager honours serviceConfig."X-RestartIfChanged" in
 # [Service] and SKIPS the unit restart on `system-manager switch`, so a switch
 # triggered by an agent running INSIDE paseo doesn't kill the agent + its
-# in-flight switch. New version/config applies on the next deliberate
-# `systemctl restart paseo` or reboot. (The NixOS path uses restartIfChanged=false.)
+# in-flight switch. A new config.json reaches the running daemon through the
+# paseo-config oneshot (regen + live `paseo daemon reload`, no restart; it
+# re-runs on any switch that changes the config); a new version applies on the
+# next deliberate `systemctl restart paseo` or reboot. (The NixOS path uses
+# restartIfChanged=false and the same paseo-config unit.)
 #
 {
   config,
@@ -144,6 +147,39 @@ in
     assert lib.assertMsg (useDynamic || cfg.paseoConfigFile != null)
       "osf.paseoForeign: set either paseoConfig (dynamic) or paseoConfigFile (legacy)";
     {
+      # Switch path for config.json (agentLib.mkPaseoConfigApplyScript); before
+      # the daemon at boot, when it only lays the file.
+      systemd.services.paseo-config = {
+        description = "Apply the generated paseo config.json to the running daemon";
+        after = lib.optional useDynamic "ucc-update.service";
+        before = [ "paseo.service" ];
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          User = cfg.username;
+          Environment = [
+            "PASEO_HOME=${paseoHome}"
+            "PATH=/usr/bin:/bin"
+          ];
+          ExecStart = agentLib.mkPaseoConfigApplyScript {
+            name = "foreign";
+            inherit paseoHome;
+            regen =
+              if useDynamic then
+                "${genScript}"
+              else
+                ''
+                  ${pkgs.coreutils}/bin/install -D -m 0600 ${configJson} ${paseoHome}/config.json.tmp
+                  ${pkgs.coreutils}/bin/mv -f ${paseoHome}/config.json.tmp ${paseoHome}/config.json
+                '';
+            inherit (cfg) paseoPackage;
+            daemonUnit = "paseo.service";
+            systemctl = "systemctl";
+          };
+        };
+      };
+
       systemd.services.paseo = {
         description = "Paseo - self-hosted daemon for AI coding agents";
         # Ordered after the installer and pulls it in, never bound to it:
