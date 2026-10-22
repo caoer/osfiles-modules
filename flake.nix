@@ -142,6 +142,12 @@
         osf-tailscale = import ./modules/net/tailscale.nix;
         osf-gateway = import ./modules/net/gateway;
 
+        # collector-rs observability site stack (osf.obsSite). Opt-in, NOT part
+        # of `default`: the consumer passes its own collector-rs input as
+        # osf.obsSite.src. osfiles (lazybox-svc, timeline-lax) and
+        # coscene-nix-nixos (cos-stex-svc) import it.
+        osf-obs-site = import ./modules/obs-site.nix;
+
         # Default: member-base + agent NixOS modules (ucc, paseo).
         default = import ./modules/_all-nixos.nix {
           tmuxSrc = inputs.tmux-src;
