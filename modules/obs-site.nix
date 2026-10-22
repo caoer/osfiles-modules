@@ -45,13 +45,15 @@ let
       s = services.${c.of} or (throw "osf.obsSite.copies.${n}: ${c.of} is not an entry this host runs");
       listen = lib.hasPrefix "-httpListenAddr=";
     in
-    assert lib.assertMsg (lib.count listen s.args == 1)
-      "osf.obsSite.copies.${n}: ${c.of} does not have exactly one -httpListenAddr= argument to move";
+    assert lib.assertMsg (
+      lib.count listen s.args == 1
+    ) "osf.obsSite.copies.${n}: ${c.of} does not have exactly one -httpListenAddr= argument to move";
     s
     // {
       name = n;
       inherit (c) port;
-      args = lib.filter (a: !listen a) s.args ++ [ "-httpListenAddr=127.0.0.1:${toString c.port}" ] ++ c.args;
+      args =
+        lib.filter (a: !listen a) s.args ++ [ "-httpListenAddr=127.0.0.1:${toString c.port}" ] ++ c.args;
     };
   units = services // lib.mapAttrs copy cfg.copies;
 
@@ -243,25 +245,26 @@ in
   config = lib.mkIf cfg.enable (
     lib.mkMerge [
       {
-        assertions = lib.concatMap (
-          s:
-          map (v: {
-            assertion = cfg.envFiles ? ${v};
-            message = "osf.obsSite: ${s.name} passes ${v} from the environment; set osf.obsSite.envFiles.${v}";
-          }) s.passEnv
-        ) (lib.attrValues services)
-        ++ map (n: {
-          assertion = lib.elem n cfg.run;
-          message = "osf.obsSite.env.${n}: ${n} is not an entry this host runs";
-        }) (lib.attrNames cfg.env)
-        ++ map (n: {
-          assertion = lib.elem n cfg.run;
-          message = "osf.obsSite.args.${n}: ${n} is not an entry this host runs";
-        }) (lib.attrNames cfg.args)
-        ++ map (n: {
-          assertion = !(fleet.ports ? ${n});
-          message = "osf.obsSite.copies.${n}: ${n} is a services.toml entry; a copy takes a name of its own";
-        }) (lib.attrNames cfg.copies);
+        assertions =
+          lib.concatMap (
+            s:
+            map (v: {
+              assertion = cfg.envFiles ? ${v};
+              message = "osf.obsSite: ${s.name} passes ${v} from the environment; set osf.obsSite.envFiles.${v}";
+            }) s.passEnv
+          ) (lib.attrValues services)
+          ++ map (n: {
+            assertion = lib.elem n cfg.run;
+            message = "osf.obsSite.env.${n}: ${n} is not an entry this host runs";
+          }) (lib.attrNames cfg.env)
+          ++ map (n: {
+            assertion = lib.elem n cfg.run;
+            message = "osf.obsSite.args.${n}: ${n} is not an entry this host runs";
+          }) (lib.attrNames cfg.args)
+          ++ map (n: {
+            assertion = !(fleet.ports ? ${n});
+            message = "osf.obsSite.copies.${n}: ${n} is a services.toml entry; a copy takes a name of its own";
+          }) (lib.attrNames cfg.copies);
 
         osf.obsSite.ports = fleet.ports;
         osf.obsSite.builds = fleet.builds;
