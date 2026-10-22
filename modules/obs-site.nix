@@ -25,7 +25,7 @@ let
   system = cfg.user == null;
 
   fleet = import "${cfg.src}/infra/fleet" {
-    inherit pkgs;
+    inherit (cfg) pkgs;
     inherit (cfg)
       src
       portBase
@@ -61,7 +61,7 @@ let
         export ${v}
       '') s.passEnv}
       cd ${esc s.workdir}
-      exec ${esc s.exec} ${lib.escapeShellArgs s.args}
+      exec ${esc s.exec} ${lib.escapeShellArgs (s.args ++ (cfg.args.${s.name} or [ ]))}
     '';
 
   deps = s: map (d: "${unit d}.service") s.after;
@@ -86,6 +86,17 @@ in
       type = types.path;
       example = lib.literalExpression "inputs.collector-rs-src";
       description = "The collector-rs tree at the deployed sha: the consumer's non-flake collector-rs input.";
+    };
+
+    pkgs = mkOption {
+      type = types.pkgs;
+      default = pkgs;
+      defaultText = lib.literalExpression "pkgs";
+      example = lib.literalExpression "inputs.nixpkgs-obs.legacyPackages.x86_64-linux";
+      description = ''
+        The nixpkgs the stack's binaries come from. Evaluation fails when a package's version differs from collector-rs
+        infra/pins.toml, so a host whose own nixpkgs differs passes one at the pin's rev ([nix].nixpkgs_rev there).
+      '';
     };
 
     run = mkOption {
@@ -137,6 +148,19 @@ in
       description = "Entry name → variables set over that entry's services.toml env.";
     };
 
+    args = mkOption {
+      type = types.attrsOf (types.listOf types.str);
+      default = { };
+      example = {
+        vl = [ "-retentionPeriod=90d" ];
+      };
+      description = ''
+        Entry name → arguments appended after that entry's services.toml args. A Victoria flag that takes one value
+        keeps its last, so an argument here overrides one services.toml sets; a list flag (-httpListenAddr) takes
+        both values.
+      '';
+    };
+
     builds = mkOption {
       type = types.attrsOf types.package;
       readOnly = true;
@@ -175,7 +199,11 @@ in
         ++ map (n: {
           assertion = lib.elem n cfg.run;
           message = "osf.obsSite.env.${n}: ${n} is not an entry this host runs";
-        }) (lib.attrNames cfg.env);
+        }) (lib.attrNames cfg.env)
+        ++ map (n: {
+          assertion = lib.elem n cfg.run;
+          message = "osf.obsSite.args.${n}: ${n} is not an entry this host runs";
+        }) (lib.attrNames cfg.args);
 
         osf.obsSite.ports = fleet.ports;
         osf.obsSite.builds = fleet.builds;
