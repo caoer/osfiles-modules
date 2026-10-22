@@ -10,7 +10,7 @@
 # A host may run part of the stack: `run` names its entries, `remote` gives the address of the host that runs an
 # entry referenced from here. With `user` null the units are system services as the obs-site user; with `user` set
 # they are that user's home-manager user units — the alert plane on a UCC host, where obs-bridge spawns seats through
-# the user's ccc-agent.
+# the user's ccc-agent. `copies` runs an entry a second time under another name, against another site's stores.
 {
   config,
   lib,
@@ -36,6 +36,24 @@ let
       ;
   };
   inherit (fleet) services;
+
+  # A copy is its entry's process again under its own name: -httpListenAddr moved to the copy's port on loopback,
+  # the copy's args after the entry's (a one-value Victoria flag keeps its last).
+  copy =
+    n: c:
+    let
+      s = services.${c.of} or (throw "osf.obsSite.copies.${n}: ${c.of} is not an entry this host runs");
+      listen = lib.hasPrefix "-httpListenAddr=";
+    in
+    assert lib.assertMsg (lib.count listen s.args == 1)
+      "osf.obsSite.copies.${n}: ${c.of} does not have exactly one -httpListenAddr= argument to move";
+    s
+    // {
+      name = n;
+      inherit (c) port;
+      args = lib.filter (a: !listen a) s.args ++ [ "-httpListenAddr=127.0.0.1:${toString c.port}" ] ++ c.args;
+    };
+  units = services // lib.mapAttrs copy cfg.copies;
 
   # The unit's process: directories and links the entry declares, its env (exported here so systemd expands nothing),
   # each pass_env variable from its file, then the binary — as infra/site.sh's per-unit script does.
@@ -161,6 +179,42 @@ in
       '';
     };
 
+    copies = mkOption {
+      type = types.attrsOf (
+        types.submodule {
+          options = {
+            of = mkOption {
+              type = types.str;
+              description = "The entry run here whose process the copy runs again.";
+            };
+            port = mkOption {
+              type = types.port;
+              description = "The copy's -httpListenAddr port, on 127.0.0.1.";
+            };
+            args = mkOption {
+              type = types.listOf types.str;
+              default = [ ];
+              description = "Appended after the entry's services.toml args; `args.<of>` does not reach the copy.";
+            };
+          };
+        }
+      );
+      default = { };
+      example = lib.literalExpression ''
+        {
+          vmalert-stex = {
+            of = "vmalert";
+            port = 8536;
+            args = [ "-datasource.url=https://obs-read.example.com" ];
+          };
+        }
+      '';
+      description = ''
+        Name → a second unit obs-site-<name> of a Victoria entry run here, pointed elsewhere by its args: a vmalert
+        that evaluates the same rules against another site's store.
+      '';
+    };
+
     builds = mkOption {
       type = types.attrsOf types.package;
       readOnly = true;
@@ -203,7 +257,11 @@ in
         ++ map (n: {
           assertion = lib.elem n cfg.run;
           message = "osf.obsSite.args.${n}: ${n} is not an entry this host runs";
-        }) (lib.attrNames cfg.args);
+        }) (lib.attrNames cfg.args)
+        ++ map (n: {
+          assertion = !(fleet.ports ? ${n});
+          message = "osf.obsSite.copies.${n}: ${n} is a services.toml entry; a copy takes a name of its own";
+        }) (lib.attrNames cfg.copies);
 
         osf.obsSite.ports = fleet.ports;
         osf.obsSite.builds = fleet.builds;
@@ -240,7 +298,7 @@ in
               LoadCredential = map (v: "${v}:${cfg.envFiles.${v}}") s.passEnv;
             };
           }
-        ) services;
+        ) units;
       })
 
       (lib.mkIf (!system) {
@@ -261,7 +319,7 @@ in
             };
             Install.WantedBy = [ "default.target" ];
           }
-        ) services;
+        ) units;
       })
     ]
   );
