@@ -721,10 +721,11 @@ in
       startLimitIntervalSec = 0;
       serviceConfig = {
         ExecStart = "${pkgs.websocat}/bin/websocat --text --linemode-strip-newlines --exit-on-eof --ping-interval 30 --ping-timeout 90 ${fleetUrl} exec:${fleetClient}";
+        # Fixed 10 s on purpose: systemd's restart counter does not reset
+        # on a healthy run, so a RestartSteps backoff would hold every
+        # reconnect after the 5th drop at its ceiling.
         Restart = "always";
         RestartSec = 10;
-        RestartSteps = 5;
-        RestartMaxDelaySec = 300;
       };
     };
   };
