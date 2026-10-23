@@ -95,7 +95,7 @@ let
         { id = "minimax/minimax-m3[1m]"; label = "MiniMax: MiniMax M3 (1M)"; }
         { id = "z-ai/glm-5.3[1m]"; label = "Z.AI: GLM 5.3 (1M)"; }
         { id = "z-ai/glm-5.3-flash[1m]"; label = "Z.AI: GLM 5.3 Flash (1M)"; }
-        { id = "moonshotai/kimi-k3[1m]"; label = "Moonshot: Kimi K3 (1M)"; }
+        { id = "moonshotai/kimi-k3.1-pro[1m]"; label = "Moonshot: Kimi K3.1 Pro (1M)"; }
       ];
     };
   };
