@@ -7,7 +7,8 @@
 # it. The router fetches on its first start after boot and starts on the
 # stored config when that fetch fails; afterwards each revision the mesh
 # Worker pushes down the -fleet socket runs the -update, which restarts the
-# router only when the raw answer changed.
+# router only when the raw answer changed. `fleet = false` leaves the socket
+# out, and the stored config stays until -update runs or the next boot.
 #
 # Three modes:
 #   tun-us        — direct: UCC profile processes proxy, everything else DIRECT.
@@ -622,6 +623,18 @@ in
       '';
     };
 
+    fleet = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Run the -fleet socket, which applies each registry revision the mesh
+        Worker pushes. Off, the unit is not in the system at all, so no
+        switch or boot starts it: the router keeps its stored config, and a
+        new one arrives only through -update by hand or the router's fetch on
+        its first start after boot.
+      '';
+    };
+
     failClosed = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -730,7 +743,7 @@ in
     # The mesh Worker pushes each registry revision down this socket; the
     # client applies it and answers (plan § 3.4). No timer: a host that is
     # offline catches up on the revision it is sent at reconnect.
-    systemd.services."${serviceName}-fleet" = {
+    systemd.services."${serviceName}-fleet" = lib.mkIf cfg.fleet {
       description = "Fleet socket for ${serviceName}: apply each pushed registry revision";
       after = [
         "network-online.target"
