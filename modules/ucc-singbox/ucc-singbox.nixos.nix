@@ -23,7 +23,7 @@
 # outbound (tun-us-strict), and the rules that keep a flow no registry row
 # claimed off Anthropic and OpenAI from the host's own address: a process
 # lookup miss, ucc-codex's node, a profile with no row
-# (./anthropic-failclosed.jq).
+# (./anthropic-failclosed.jq; with failClosed off, ./failclosed-hold.jq).
 #
 # Usage (direct, US host):
 #   osf.uccSingbox = {
@@ -220,9 +220,13 @@ let
       ${pkgs.jq}/bin/jq -f ${./anthropic-failclosed.jq} "$out" > "$out.tmp"
       mv "$out.tmp" "$out"'' else ''
       # Post-process step 3 with failClosed off: the IPv4-only profiles' IPv6
-      # guards alone (rule 4 of ./anthropic-failclosed.jq) — every account
-      # leaves through its own exit on IPv4 and IPv6 alike, whatever the flag.
+      # guards (rule 4 of ./anthropic-failclosed.jq) — every account leaves
+      # through its own exit on IPv4 and IPv6 alike, whatever the flag — then
+      # the renderer-hold fail-closed (./failclosed-hold.jq): the shared
+      # node's OpenAI route, Anthropic refused, any found process direct.
       ${pkgs.jq}/bin/jq --arg only v6guards -f ${./anthropic-failclosed.jq} "$out" > "$out.tmp"
+      mv "$out.tmp" "$out"
+      ${pkgs.jq}/bin/jq --arg home ${lib.escapeShellArg userHome} -f ${./failclosed-hold.jq} "$out" > "$out.tmp"
       mv "$out.tmp" "$out"''}
     ${singboxPkg}/bin/sing-box check -c "$out"
 
@@ -605,8 +609,10 @@ in
       default = true;
       description = ''
         Render the rules of ./anthropic-failclosed.jq into the config. Off
-        leaves them out, so the rendered config has no fail-closed of its
-        own; the host then answers for any Anthropic fail-closed it needs.
+        (the renderer hold on seat hosts) renders their IPv6 guards alone and
+        ./failclosed-hold.jq in place of the rest: the shared node's OpenAI
+        route, Anthropic refused for any flow no registry row claimed, any
+        found process direct.
       '';
     };
 
