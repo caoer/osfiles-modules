@@ -39,7 +39,9 @@
 # ab.chatgpt.com, auth.openai.com, releases.openai.com), matched by the name
 # the sniff rule reads, since OpenAI sits behind Cloudflare with no prefix of
 # its own. A config with no profile rule is left as it is. Re-running the
-# program replaces its own rules.
+# program replaces its own rules. With `--arg only v6guards` it writes rule 4's
+# IPv6 guards alone: every account leaves through its own exit on IPv4 and IPv6
+# alike, so a host that holds the rest back still gets them.
 #
 # The same program runs in osfiles modules/ucc-singbox/anthropic-failclosed.jq
 # (the darwin and Foreign renders); keep the two identical.
@@ -68,7 +70,8 @@
        action: "reject" }] as $v6guards
 | ([$base | to_entries[] | select(.value.process_path_regex) | .key] | max) as $last
 | (first($base[] | select(any(.process_path_regex[]?; endswith("\\.codex/")))) // null) as $codex
-| if $last == null then .
+| if ($ARGS.named.only // "") == "v6guards" then .route.rules = $v6guards + $base
+  elif $last == null then .
   else .route.rules = $v6guards
     + $base[0:$last + 1]
     + [$failclosed]

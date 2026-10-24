@@ -211,12 +211,17 @@ let
       ${hook} "$out"
     '') cfg.postFetch}
 
-    ${lib.optionalString cfg.failClosed ''
+    ${if cfg.failClosed then ''
       # Post-process step 3: a flow no registry row claimed (a process lookup
       # miss, ucc-codex's node, a profile with no row) never reaches Anthropic
       # or OpenAI from this host's own address (./anthropic-failclosed.jq).
       # Two commands, so set -e refuses the candidate when jq fails.
       ${pkgs.jq}/bin/jq -f ${./anthropic-failclosed.jq} "$out" > "$out.tmp"
+      mv "$out.tmp" "$out"'' else ''
+      # Post-process step 3 with failClosed off: the IPv4-only profiles' IPv6
+      # guards alone (rule 4 of ./anthropic-failclosed.jq) — every account
+      # leaves through its own exit on IPv4 and IPv6 alike, whatever the flag.
+      ${pkgs.jq}/bin/jq --arg only v6guards -f ${./anthropic-failclosed.jq} "$out" > "$out.tmp"
       mv "$out.tmp" "$out"''}
     ${singboxPkg}/bin/sing-box check -c "$out"
 
