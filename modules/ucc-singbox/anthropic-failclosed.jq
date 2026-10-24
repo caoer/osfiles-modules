@@ -32,17 +32,19 @@
 | { type: "logical", mode: "and", rules: [{ process_path_regex: [".*"], invert: true }, $ai], action: "reject" } as $failclosed
 | ["/\\.local/share/ucc/shared/node/bin/node$"] as $node
 | ["/\\.local/share/ucc/profiles/"] as $profiles
-| [(.route.rules // [])[]
-    | select(. != $failclosed and .process_path_regex != $node and .process_path_regex != $profiles)] as $base
+| def ours: . == $failclosed
+    or (.type == "logical" and ((.rules[0].process_path_regex == $node) or (.rules[0].process_path_regex == $profiles)));
+  [(.route.rules // [])[] | select(ours | not)] as $base
 | ([$base | to_entries[] | select(.value.process_path_regex) | .key] | max) as $last
 | (first($base[] | select(any(.process_path_regex[]?; endswith("\\.codex/"))) | .outbound) // null) as $codex
 | if $last == null then .
   else .route.rules = $base[0:$last + 1]
     + [
         $failclosed,
-        ({ process_path_regex: $node, domain_suffix: ["chatgpt.com", "openai.com"] }
+        ({ type: "logical", mode: "and",
+           rules: [{ process_path_regex: $node }, { domain_suffix: ["chatgpt.com", "openai.com"] }] }
           + if $codex then { action: "route", outbound: $codex } else { action: "reject" } end),
-        ({ process_path_regex: $profiles } + $ai + { action: "reject" })
+        { type: "logical", mode: "and", rules: [{ process_path_regex: $profiles }, $ai], action: "reject" }
       ]
     + $base[$last + 1:]
   end
