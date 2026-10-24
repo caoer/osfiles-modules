@@ -17,6 +17,11 @@
 #    unchanged.
 # 3. A process in a UCC profile dir whose profile has no registry row, on its
 #    way to Anthropic or OpenAI: refused, never sent through route.final.
+# 4. A profile whose exit shares its IPv6 /64 with another account of the same
+#    provider leaves on IPv4 alone: its IPv6 flows are refused right before its
+#    own rule, so no provider sees two of its accounts on one /64.
+#    briny_baron_16: ucc-soils29_eggcup's 2600:1901:8130:156::/64 also carries
+#    mules_fated_7c, both Claude accounts.
 #
 # Destinations: Anthropic's domains and the prefixes AS399358 announces;
 # OpenAI's domains chatgpt.com and openai.com (Codex: chatgpt.com,
@@ -35,11 +40,21 @@
 | "\\.local/share/ucc/shared/node/bin/node$" as $nodeTail
 | { domain_suffix: ["chatgpt.com", "openai.com"] } as $openai
 | ["/\\.local/share/ucc/profiles/"] as $profiles
+| ["briny_baron_16"] as $v6only
 | def ours: . == $failclosed
     or (.type == "logical" and (
       (.rules[0].process_path_regex == $profiles)
-      or any(.rules[0].process_path_regex[]?; endswith($nodeTail))));
-  [(.route.rules // [])[] | select(ours | not)] as $base
+      or any(.rules[0].process_path_regex[]?; endswith($nodeTail))
+      or (.rules[1] == { ip_version: 6 } and .action == "reject")));
+  def v6only: .process_path_regex as $re
+    | (.type | not) and $re != null
+      and any($re[]; . as $r | any($v6only[]; . as $p | $r | contains("/ucc/profiles/" + $p + "/")));
+  [(.route.rules // [])[] | select(ours | not)
+   | if v6only
+     then { type: "logical", mode: "and",
+            rules: [{ process_path_regex: .process_path_regex }, { ip_version: 6 }],
+            action: "reject" }, .
+     else . end] as $base
 | ([$base | to_entries[] | select(.value.process_path_regex) | .key] | max) as $last
 | (first($base[] | select(any(.process_path_regex[]?; endswith("\\.codex/")))) // null) as $codex
 | if $last == null then .
