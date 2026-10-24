@@ -5,8 +5,7 @@
 #
 # 1. A flow whose process lookup misses ("router: failed to search process")
 #    or finds an owner with no path, on its way to Anthropic or OpenAI:
-#    refused. A flow whose process was found goes on exactly as before,
-#    through every later rule.
+#    refused. A flow whose process was found goes on to the rules below.
 # 2. The ChatGPT account's OpenAI traffic from ucc-codex. ucc-codex runs on
 #    UCC's shared node binary, which every UCC node script runs on too, so no
 #    registry row can name it alone: sing-box matches the executable, not the
@@ -33,6 +32,11 @@
 #    exit and the Claude accounts of the other us-east4 exits.
 #    hedge_potato6i: its exit, vircs-us-residential, has no IPv6; the relay
 #    answers an IPv6 destination with "network unreachable".
+# 5. Any process, right after rule 3, on its way to Anthropic: refused. A
+#    process sing-box found outside every profile dir (curl run by the routed
+#    user on the host) would otherwise leave through route.final from the
+#    host's own address. OpenAI is not in this rule: such a flow goes on to
+#    the rules after it (advisor ruling, 10-24).
 #
 # Destinations: Anthropic's domains and the prefixes AS399358 announces;
 # OpenAI's domains chatgpt.com and openai.com (Codex: chatgpt.com,
@@ -50,11 +54,12 @@
   ip_cidr: ["160.79.104.0/23", "2607:6bc0::/48", "2607:6bc0:11::/48"]
 } as $ai
 | { type: "logical", mode: "and", rules: [{ process_path_regex: [".*"], invert: true }, $ai], action: "reject" } as $failclosed
+| { action: "reject", domain_suffix: ["anthropic.com", "claude.ai", "claude.com"], ip_cidr: $ai.ip_cidr } as $anthropic
 | "\\.local/share/ucc/shared/node/bin/node$" as $nodeTail
 | { domain_suffix: ["chatgpt.com", "openai.com"] } as $openai
 | ["/\\.local/share/ucc/profiles/"] as $profiles
 | ["briny_baron_16", "blusher-83savvy", "hedge_potato6i"] as $v6only
-| def ours: . == $failclosed
+| def ours: . == $failclosed or . == $anthropic
     or (.type == "logical" and (
       (.rules[0].process_path_regex == $profiles)
       or any(.rules[0].process_path_regex[]?; endswith($nodeTail))
@@ -83,7 +88,8 @@
       else [] end)
     + [
         { type: "logical", mode: "and", rules: [{ process_path_regex: ["/" + $nodeTail] }, $openai], action: "reject" },
-        { type: "logical", mode: "and", rules: [{ process_path_regex: $profiles }, $ai], action: "reject" }
+        { type: "logical", mode: "and", rules: [{ process_path_regex: $profiles }, $ai], action: "reject" },
+        $anthropic
       ]
     + $base[$last + 1:]
   end
