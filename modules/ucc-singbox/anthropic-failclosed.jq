@@ -22,6 +22,9 @@
 #    own rule, so no provider sees two of its accounts on one /64.
 #    briny_baron_16: ucc-soils29_eggcup's 2600:1901:8130:156::/64 also carries
 #    mules_fated_7c, both Claude accounts.
+#    blusher-83savvy: ucc-blusher-83savvy's 2600:1900:4090:30b::/64 is the
+#    us-east4 exits' common /64; it also carries does_bannock_6u on the same
+#    exit and the Claude accounts of the other us-east4 exits.
 #
 # Destinations: Anthropic's domains and the prefixes AS399358 announces;
 # OpenAI's domains chatgpt.com and openai.com (Codex: chatgpt.com,
@@ -40,7 +43,7 @@
 | "\\.local/share/ucc/shared/node/bin/node$" as $nodeTail
 | { domain_suffix: ["chatgpt.com", "openai.com"] } as $openai
 | ["/\\.local/share/ucc/profiles/"] as $profiles
-| ["briny_baron_16"] as $v6only
+| ["briny_baron_16", "blusher-83savvy"] as $v6only
 | def ours: . == $failclosed
     or (.type == "logical" and (
       (.rules[0].process_path_regex == $profiles)
