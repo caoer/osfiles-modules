@@ -70,6 +70,25 @@ let
   # (LAN proxy + final route change) is handled in post-processing.
   apiPreset = if isStrict then "tun-us" else cfg.preset;
 
+  # The blocks sing-box's ip_is_private matches (sing N.IsPublicAddr: private,
+  # link-local, multicast), which the API answer routes direct ahead of every
+  # profile rule. auto_route leaves them out of the tun, so the kernel routes
+  # them as if no tun were there: a routed user's replies and forwarded flows
+  # to a host-local subnet (docker, k3s, VM and collector sim links, the mesh)
+  # reach that subnet, whenever it comes up. Without auto_redirect, auto_route
+  # sends every routed packet to the tun by uid, replies of the user's own
+  # listeners included, and the tun stack drops what it did not open.
+  privateBlocks = [
+    "10.0.0.0/8"
+    "172.16.0.0/12"
+    "192.168.0.0/16"
+    "169.254.0.0/16"
+    "224.0.0.0/4"
+    "fc00::/7"
+    "fe80::/10"
+    "ff00::/8"
+  ];
+
   fleetUrl = "${
     lib.replaceStrings [ "https://" "http://" ] [ "wss://" "ws://" ] cfg.apiUrl
   }/fleet/ws";
@@ -134,9 +153,10 @@ let
     #   misses and the fail-closed rule refuses a profile's own flow. Plain
     #   auto_route puts the routed users' sockets on the tun at connect time,
     #   so sing-box sees each socket's own tuple.
-    # - Exclude this host's own addresses from auto_route, and reject them
-    #   and loopback in route.rules: nothing legitimate reaches the router
-    #   with such a destination, and `direct` would hand it back to the host
+    # - Exclude this host's own addresses and the private blocks
+    #   (privateBlocks) from auto_route, and reject the own addresses and
+    #   loopback in route.rules: nothing legitimate reaches the router with
+    #   such a destination, and `direct` would hand it back to the host
     #   itself.
     # - Exclude docker/br-/veth from auto_route so published containers
     #   don't enter the TUN.
@@ -161,7 +181,7 @@ let
       --argjson uid "$target_uid" \
       --arg extra_uids "$extra_uids" \
       --arg cidrs "$host_cidrs" \
-      --argjson ex_route ${lib.escapeShellArg (builtins.toJSON cfg.routeExcludeAddress)} \
+      --argjson ex_route ${lib.escapeShellArg (builtins.toJSON (privateBlocks ++ cfg.routeExcludeAddress))} \
       --arg ifaces "$docker_ifaces" \
       --argjson force_loose ${if isStrict then "false" else "true"} \
       '
