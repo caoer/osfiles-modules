@@ -7,8 +7,10 @@
 # it. The router fetches on its first start after boot and starts on the
 # stored config when that fetch fails; afterwards each revision the mesh
 # Worker pushes down the -fleet socket runs the -update, which restarts the
-# router only when the raw answer changed. `fleet = false` leaves the socket
-# out, and the stored config stays until -update runs or the next boot.
+# router only when the raw answer changed, and puts the previous config back
+# when the restart fails or the router's egress check gets worse. `fleet =
+# false` leaves the socket out, and the stored config stays until -update
+# runs or the next boot.
 #
 # Three modes:
 #   tun-us        — direct: UCC profile processes proxy, everything else DIRECT.
@@ -266,6 +268,18 @@ let
   #          `applied`. Any failure reports `failed <one line>`, exits non-zero
   #          and leaves the installed config as it was.
   #
+  #          The restart is judged by the egress check (`egress`) run before
+  #          the install and after the restart: the router active, the routed
+  #          user's google generate_204 answered 204, the routed user's
+  #          Anthropic refused (000; a flow no registry row claims never
+  #          reaches it from this host). A failed restart, or any of the three
+  #          that held before and not after, puts the previous config, raw and
+  #          renderer stamp back, restarts the router on them and reports
+  #          `failed … rolled back`. That candidate (raw + renderer) is kept in
+  #          `rejected`: the same revision sent again — at every reconnect —
+  #          is refused without a restart until the raw or the renderer
+  #          changes.
+  #
   # The compare is raw fetch to raw fetch, so what the renderer and the
   # postFetch hooks add (this boot's addresses, a host's rewrite) never reads
   # as a change. The result word goes to the file named by $2 (the fleet
@@ -319,6 +333,28 @@ let
     }
     same_renderer() { [ "$(cat "$state/render.id" 2>/dev/null || true)" = "$stamp" ]; }
 
+    # The egress check: "<router state> <google code> <anthropic code>", the
+    # two codes from the routed user's own curl (its traffic is on the tun).
+    egress() {
+      as_user() {
+        ${pkgs.util-linux}/bin/setpriv --reuid=${cfg.user} --regid="$(${pkgs.coreutils}/bin/id -g ${cfg.user})" --init-groups -- \
+          ${pkgs.curl}/bin/curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$1" || true
+      }
+      printf '%s %s %s\n' \
+        "$(${pkgs.systemd}/bin/systemctl is-active ${serviceName}.service || true)" \
+        "$(as_user https://www.google.com/generate_204)" \
+        "$(as_user https://api.anthropic.com/)"
+    }
+    # What held before ($1) and not after ($2); empty when nothing got worse.
+    worse() {
+      set -- $1 $2
+      w=""
+      if [ "''${1:-}" = active ] && [ "''${4:-}" != active ]; then w="router ''${4:-?}"; fi
+      if [ "''${2:-}" = 204 ] && [ "''${5:-}" != 204 ]; then w="''${w:+$w, }google ''${5:-?}"; fi
+      if [ "''${3:-}" = 000 ] && [ "''${6:-}" != 000 ]; then w="''${w:+$w, }anthropic reached (''${6:-?})"; fi
+      printf '%s' "$w"
+    }
+
     case "$mode" in
       start)
         boot="$(cat /proc/sys/kernel/random/boot_id)"
@@ -362,14 +398,55 @@ let
           report unchanged
           exit 0
         fi
+        candidate="$({ sha256sum < "$work/raw.json"; printf '%s\n' "$stamp"; } | sha256sum | cut -c1-64)"
+        if [ "$(cat "$state/rejected" 2>/dev/null || true)" = "$candidate" ]; then
+          fail "this raw was rolled back here before ($(cat "$state/rejected.why" 2>/dev/null || true)) — not applied again"
+        fi
         render || fail "render: $(lastline)"
+        before="$(egress)"
+        mkdir "$work/prev"
+        for f in config.json raw.json render.id; do
+          if [ -e "$state/$f" ]; then cp -p "$state/$f" "$work/prev/$f"; fi
+        done
         install_candidate
         # The router's start takes the same lock.
         ${pkgs.util-linux}/bin/flock -u 9
-        say "config changed — restarting ${serviceName}"
+        say "config changed — restarting ${serviceName} (egress before: $before)"
+        if ${pkgs.systemd}/bin/systemctl restart ${serviceName}.service; then
+          # The tun takes a moment after the restart: up to 4 checks, 3 s
+          # apart. Anthropic reached ends the wait at once.
+          why="" after=""
+          for _ in 1 2 3 4; do
+            sleep 3
+            after="$(egress)"
+            why="$(worse "$before" "$after")"
+            case "$why" in "" | *anthropic*) break ;; esac
+          done
+        else
+          after="restart failed"
+          why="${serviceName} failed to restart"
+        fi
+        if [ -z "$why" ]; then
+          rm -f "$state/rejected" "$state/rejected.why"
+          say "applied (egress after: $after)"
+          report applied
+          exit 0
+        fi
+        say "egress worse after the restart: $why (before: $before, after: $after)"
+        [ -s "$work/prev/config.json" ] \
+          || fail "$why — no previous config to roll back to"
+        ${pkgs.util-linux}/bin/flock 9
+        mv -f "$work/prev/config.json" "$state/config.json"
+        if [ -e "$work/prev/raw.json" ]; then mv -f "$work/prev/raw.json" "$state/raw.json"; fi
+        # The current stamp, so the router's start keeps the restored config
+        # instead of re-rendering the restored raw.
+        printf '%s\n' "$stamp" > "$state/render.id"
+        printf '%s\n' "$candidate" > "$state/rejected"
+        printf '%s\n' "$why" > "$state/rejected.why"
+        ${pkgs.util-linux}/bin/flock -u 9
         ${pkgs.systemd}/bin/systemctl restart ${serviceName}.service \
-          || fail "installed, but ${serviceName} failed to restart"
-        report applied
+          || fail "$why — rolled back, but ${serviceName} failed to restart"
+        fail "$why — rolled back to $(sha256sum "$state/config.json" | cut -c1-12)"
         ;;
       *)
         fail "unknown mode $mode"
