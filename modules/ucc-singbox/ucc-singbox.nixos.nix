@@ -18,7 +18,7 @@
 #   tun-cn        — relay: full geo routing + UCC relay chain (CN / censored).
 #
 # The module post-processes the API response to inject include_uid (scopes the
-# TUN to a single system user), auto_redirect (Linux), optionally a LAN proxy
+# TUN to a single system user), auto_redirect off, optionally a LAN proxy
 # outbound (tun-us-strict), and the rules that keep a flow no registry row
 # claimed off Anthropic and OpenAI from the host's own address: a process
 # lookup miss, ucc-codex's node, a profile with no row
@@ -121,24 +121,22 @@ let
     # Post-process step 1: TUN fields
     # - Root (uid 0): omit include_uid so TUN captures ALL users' traffic
     # - Non-root: add include_uid to scope TUN to that user only
-    # - Enable auto_redirect on Linux (always recommended per upstream docs)
-    # - Exclude this host's own addresses from auto_route / auto_redirect, and
-    #   reject them in route.rules. sing-tun binds the auto_redirect listener
-    #   on IP:0_0_0_0 at a random port with no config knob (redirect_linux.go
-    #   picks netip.IPv4Unspecified), so on a host with a public IP that
-    #   listener is internet-reachable. A connection that did not arrive
-    #   through the REDIRECT rule carries no conntrack original-dst, so
-    #   sing-box reads the socket's own address as the destination — dest
-    #   <own-ip>:<redirect-port>. A `bypass` action hands that back to the
-    #   listener through `direct`, a self-feeding hairpin that pegs CPU;
-    #   `reject` closes the connection instead. The redirectGuard unit below
-    #   drops the seed traffic at the packet layer — except on lo, which it
-    #   admits: a local probe of the port (or the dual-stack listener reached
-    #   on ::1) reads as dest 127.0.0.1:<redirect-port> and seeds the same
-    #   hairpin (xu-lax: 16k self-connections/min, 3 cores). Loopback is
-    #   rejected as well: nothing legitimate reaches the router with a
-    #   loopback destination — the output REDIRECT chain returns for the
-    #   local address set, and loopback never routes through the tun.
+    # - auto_redirect off, whatever the API answer says. The process search
+    #   finds a flow's socket by the tuple sing-box sees, and auto_redirect
+    #   rewrites that tuple: (1) it REDIRECTs every TCP flow to one listener,
+    #   and Linux connect() reuses a local port across different
+    #   destinations, so two such flows collide on the listener's reply
+    #   tuple and conntrack remaps the second one's source port to a port no
+    #   socket holds; (2) its marks 0x2023-0x2025 all carry bit 0x2000, the
+    #   CNI portmap masquerade mark (k3s), so a connected UDP socket reaches
+    #   sing-box with the tun's address as its source. Either way the lookup
+    #   misses and the fail-closed rule refuses a profile's own flow. Plain
+    #   auto_route puts the routed users' sockets on the tun at connect time,
+    #   so sing-box sees each socket's own tuple.
+    # - Exclude this host's own addresses from auto_route, and reject them
+    #   and loopback in route.rules: nothing legitimate reaches the router
+    #   with such a destination, and `direct` would hand it back to the host
+    #   itself.
     # - Exclude docker/br-/veth from auto_route so published containers
     #   don't enter the TUN.
     # - tun-us: force strict_route=false. API default true blackholes
@@ -170,7 +168,7 @@ let
         | ($extra_uids | split("\n") | map(select(length > 0) | tonumber)) as $more_uids
         | ($ifaces | split("\n") | map(select(length > 0))) as $ex_if
         | (.inbounds // [] | .[] | select(.type == "tun")) |= (
-            .auto_redirect = true
+            .auto_redirect = false
             | if $uid == 0 then del(.include_uid) else .include_uid = ([$uid] + $more_uids) end
             | if $force_loose then .strict_route = false else . end
             | .route_exclude_address = (((.route_exclude_address // []) + $ex_addr + $ex_route) | unique)
@@ -390,52 +388,14 @@ let
 
   guardTable = "${serviceName}-guard";
 
-  # sing-box picks the auto_redirect port at start and binds it on IP:0_0_0_0.
-  # Only two paths legitimately reach that listener: an output-chain REDIRECT
-  # (rewritten to IP:127_0_0_1, arrives on lo) and a prerouting REDIRECT (arrives
-  # NAT'd, so conntrack carries the dnat status). Everything else on that port
-  # is an unsolicited connection to the host's public IP — drop it, so the
-  # transparent-proxy listener is not an open port on the internet.
-  redirectGuard = pkgs.writeShellScript "${serviceName}-redirect-guard" ''
-    set -u
-    nft=${pkgs.nftables}/bin/nft
-
-    port=""
-    for _ in $(${pkgs.coreutils}/bin/seq 1 60); do
-      port="$($nft list table inet sing-box 2>/dev/null \
-        | ${pkgs.gnugrep}/bin/grep -oE 'redirect to :[0-9]+' \
-        | ${pkgs.gnugrep}/bin/grep -oE '[0-9]+' \
-        | ${pkgs.coreutils}/bin/head -1)"
-      [ -n "$port" ] && break
-      ${pkgs.coreutils}/bin/sleep 1
-    done
-
-    if [ -z "$port" ]; then
-      echo "${serviceName}: no auto_redirect port in table inet sing-box — guard not installed" >&2
-      exit 0
-    fi
-
-    $nft delete table inet ${guardTable} 2>/dev/null
-    $nft -f - <<EOF
-    table inet ${guardTable} {
-      chain input {
-        type filter hook input priority filter - 5; policy accept;
-        iifname "lo" return
-        meta l4proto != tcp return
-        tcp dport $port ct status dnat return
-        tcp dport $port counter drop
-      }
-    }
-    EOF
-    echo "${serviceName}: redirect-port guard installed — tcp/$port drops non-redirected inbound"
-  '';
-
   # Residual / conflicting TUN state:
   # - A crash or SIGKILL leaves priority-90xx rules + route table 2022 (auto_route)
   #   pointing at a dead tun — blackhole risk on next start.
   # - The pre-Nix installer (~/.local/ucc-sing-box, sudo ./bin/sing-box run -C .)
   #   claims the same TEST-NET addresses (192.0.2.0/30) and table 2022, so the
   #   managed unit dies with: "set routes: add route 0: file exists".
+  # - table inet ${serviceName}-guard, an input filter on an auto_redirect
+  #   port; nothing in this module creates it, so a start drops any found.
   # Stop legacy installer processes, flush auto_route residue, drop orphan tuns.
   tunCleanup = pkgs.writeShellScript "${serviceName}-tun-cleanup" ''
     set +e
@@ -649,11 +609,12 @@ in
     # What sing-box writes back through its tun — the answers to the DNS
     # queries hijack-dns took off the routed users — arrives on that tun
     # from the upstream resolver's address. The nixos-fw rpfilter chain's fib
-    # lookup for that source lands in main (eth0, not the tun) and drops it;
-    # TCP is unaffected because auto_redirect carries it over nftables. Cached
-    # names still answer, so the symptom is "some names resolve, new ones time
-    # out". The kernel names the tun (the first free tunN — EasyTier may hold
-    # tun0), so the exemption keys on the address the profile gives it
+    # lookup for that source lands in main (eth0, not the tun) and drops it.
+    # TCP and other UDP come back through the tun the same way (auto_redirect
+    # is off), and the same exemption covers them. Cached names still answer,
+    # so the symptom is "some names resolve, new ones time out". The kernel
+    # names the tun (the first free tunN — EasyTier may hold tun0), so the
+    # exemption keys on the address the profile gives it
     # (TEST-NET-1, the same one tunCleanup keys on), not on a name.
     networking.firewall.extraReversePathFilterRules = ''
       ip daddr 192.0.2.0/30 accept
@@ -686,8 +647,6 @@ in
           "${configScript} start"
         ];
         ExecStart = "${singboxPkg}/bin/sing-box -D ${stateDir} run -c ${liveConfig}";
-        # Fence the auto_redirect listener once sing-box has published its port.
-        ExecStartPost = "+${redirectGuard}";
         # Unconditional teardown so crash residue cannot poison the next start.
         ExecStopPost = "+${tunCleanup}";
         # No CapabilityBoundingSet — process_path_regex routing needs broad
