@@ -632,6 +632,19 @@ in
       ip6 daddr fdfe:dcba:9876::/126 accept
     '';
 
+    # The tun stack answers each routed user's TCP SYN itself: sing-tun's
+    # system stack rewrites the SYN to its own listener on the tun's address
+    # and writes it back into the tun, so the kernel sees a new inbound
+    # connection on the tun. nixos-fw's input chain drops new connections on
+    # an untrusted interface; without this accept every routed user's TCP
+    # stalls at the handshake while DNS, answered in userspace, still works.
+    # Keyed on a tun interface as well as the tun's addresses, so a packet
+    # sent to TEST-NET from the LAN reaches no local listener.
+    networking.firewall.extraInputRules = ''
+      iifname "tun*" ip daddr 192.0.2.0/30 accept
+      iifname "tun*" ip6 daddr fdfe:dcba:9876::/126 accept
+    '';
+
     sops.secrets = {
       ${cfg.tokenSecret} = { };
     } // lib.optionalAttrs isStrict {

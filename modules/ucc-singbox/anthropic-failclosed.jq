@@ -18,8 +18,9 @@
 # 3. A process in a UCC profile dir whose profile has no registry row, on its
 #    way to Anthropic or OpenAI: refused, never sent through route.final.
 # 4. A profile whose exit shares its IPv6 /64 with another account of the same
-#    provider leaves on IPv4 alone, through its own exit, so no provider sees
-#    two of its accounts on one /64. Its IPv6 flows are refused at the top of
+#    provider, or whose exit has no IPv6, leaves on IPv4 alone, through its own
+#    exit, so no provider sees two of its accounts on one /64 and no flow dies
+#    at an exit that cannot reach an IPv6 address. Its IPv6 flows are refused at the top of
 #    the rule list, ahead of the sniff rule: there sing-box answers a TCP SYN
 #    with a reset, and the client falls back to IPv4. After the sniff the
 #    connection is already open, a refusal only closes it, and a dual-stack
@@ -30,6 +31,8 @@
 #    blusher-83savvy: ucc-blusher-83savvy's 2600:1900:4090:30b::/64 is the
 #    us-east4 exits' common /64; it also carries does_bannock_6u on the same
 #    exit and the Claude accounts of the other us-east4 exits.
+#    hedge_potato6i: its exit, vircs-us-residential, has no IPv6; the relay
+#    answers an IPv6 destination with "network unreachable".
 #
 # Destinations: Anthropic's domains and the prefixes AS399358 announces;
 # OpenAI's domains chatgpt.com and openai.com (Codex: chatgpt.com,
@@ -48,7 +51,7 @@
 | "\\.local/share/ucc/shared/node/bin/node$" as $nodeTail
 | { domain_suffix: ["chatgpt.com", "openai.com"] } as $openai
 | ["/\\.local/share/ucc/profiles/"] as $profiles
-| ["briny_baron_16", "blusher-83savvy"] as $v6only
+| ["briny_baron_16", "blusher-83savvy", "hedge_potato6i"] as $v6only
 | def ours: . == $failclosed
     or (.type == "logical" and (
       (.rules[0].process_path_regex == $profiles)
