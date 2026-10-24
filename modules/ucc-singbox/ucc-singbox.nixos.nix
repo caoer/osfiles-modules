@@ -18,8 +18,9 @@
 #   tun-cn        — relay: full geo routing + UCC relay chain (CN / censored).
 #
 # The module post-processes the API response to inject include_uid (scopes the
-# TUN to a single system user), auto_redirect (Linux), and optionally a LAN
-# proxy outbound (tun-us-strict).
+# TUN to a single system user), auto_redirect (Linux), optionally a LAN proxy
+# outbound (tun-us-strict), and a reject for a profile flow whose process
+# lookup missed on its way to Anthropic (./anthropic-failclosed.jq).
 #
 # Usage (direct, US host):
 #   osf.uccSingbox = {
@@ -209,6 +210,12 @@ let
     ${lib.concatMapStrings (hook: ''
       ${hook} "$out"
     '') cfg.postFetch}
+
+    # Post-process step 3: a profile flow whose process lookup missed never
+    # reaches Anthropic from this host's own address (./anthropic-failclosed.jq).
+    # Two commands, so set -e refuses the candidate when jq fails.
+    ${pkgs.jq}/bin/jq -f ${./anthropic-failclosed.jq} "$out" > "$out.tmp"
+    mv "$out.tmp" "$out"
     ${singboxPkg}/bin/sing-box check -c "$out"
 
     profiles=$(${pkgs.jq}/bin/jq '[.route.rules // [] | .[] | select(.process_path_regex)] | length' "$out")
