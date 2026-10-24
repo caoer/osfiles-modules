@@ -213,12 +213,13 @@ let
       ${hook} "$out"
     '') cfg.postFetch}
 
-    # Post-process step 3: a flow no registry row claimed (a process lookup
-    # miss, ucc-codex's node, a profile with no row) never reaches Anthropic
-    # or OpenAI from this host's own address (./anthropic-failclosed.jq).
-    # Two commands, so set -e refuses the candidate when jq fails.
-    ${pkgs.jq}/bin/jq -f ${./anthropic-failclosed.jq} "$out" > "$out.tmp"
-    mv "$out.tmp" "$out"
+    ${lib.optionalString cfg.failClosed ''
+      # Post-process step 3: a flow no registry row claimed (a process lookup
+      # miss, ucc-codex's node, a profile with no row) never reaches Anthropic
+      # or OpenAI from this host's own address (./anthropic-failclosed.jq).
+      # Two commands, so set -e refuses the candidate when jq fails.
+      ${pkgs.jq}/bin/jq -f ${./anthropic-failclosed.jq} "$out" > "$out.tmp"
+      mv "$out.tmp" "$out"''}
     ${singboxPkg}/bin/sing-box check -c "$out"
 
     profiles=$(${pkgs.jq}/bin/jq '[.route.rules // [] | .[] | select(.process_path_regex)] | length' "$out")
@@ -618,6 +619,16 @@ in
         each may rewrite the file in place. A non-zero exit refuses the
         candidate and the installed config stays. Updates compare raw API
         answers, so a hook's rewrite never reads as a change.
+      '';
+    };
+
+    failClosed = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Render the rules of ./anthropic-failclosed.jq into the config. Off
+        leaves them out, so the rendered config has no fail-closed of its
+        own; the host then answers for any Anthropic fail-closed it needs.
       '';
     };
 
