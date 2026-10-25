@@ -531,6 +531,7 @@ let
           done
       $ip $fam route flush table 2022 2>/dev/null
     done
+    ${delTunSubnetRules}
 
     for dev in $($ip -o link show 2>/dev/null \
       | ${pkgs.gawk}/bin/awk -F': ' '{print $2}' \
@@ -545,6 +546,35 @@ let
           ;;
       esac
     done
+    exit 0
+  '';
+
+  # The tun's own subnets (the addresses the profile gives the tun: TEST-NET-1
+  # and fdfe:dcba:9876::/126) go to main ahead of every other policy rule.
+  # sing-tun's system stack answers each routed user's TCP SYN from its own
+  # listener on the tun's address, as root, to the tun's peer address; the
+  # include_uid rules (9000) send root past this tun's own table, so that
+  # answer follows whatever rule comes next. Where a second auto_route tun's
+  # table covers the subnet (agent-runtime's sandbox: table 2032 from rule
+  # 9200, 192.0.0.0/9 via its tun0), the SYN-ACK went into that tun, which
+  # reset it, and every routed user's TCP died at the handshake. main holds
+  # the kernel's connected route while the tun is up; suppress_prefixlength 0
+  # lets the lookup fall through when it is not. 5190 sorts ahead of
+  # tailscale (5210+), sing-box (9000+) and agent-runtime (9200+).
+  tunSubnetRules = [
+    "-4 rule %s priority 5190 to 192.0.2.0/30 lookup main suppress_prefixlength 0"
+    "-6 rule %s priority 5190 to fdfe:dcba:9876::/126 lookup main suppress_prefixlength 0"
+  ];
+  delTunSubnetRules = lib.concatMapStrings (r: ''
+    while ${pkgs.iproute2}/bin/ip ${lib.replaceStrings [ "%s" ] [ "del" ] r} 2>/dev/null; do :; done
+  '') tunSubnetRules;
+  tunSubnetRule = pkgs.writeShellScript "${serviceName}-tun-subnet-rule" ''
+    set +e
+    ${delTunSubnetRules}
+    ${lib.concatMapStrings (r: ''
+      ${pkgs.iproute2}/bin/ip ${lib.replaceStrings [ "%s" ] [ "add" ] r} \
+        || echo "${serviceName}: not installed: ip ${lib.replaceStrings [ "%s" ] [ "add" ] r}" >&2
+    '') tunSubnetRules}
     exit 0
   '';
 
@@ -785,10 +815,12 @@ in
       wantedBy = [ "multi-user.target" ];
 
       serviceConfig = {
-        # Order: clear residue / kill legacy installer, then the config
-        # (fetched on the first start after boot, else the stored one).
+        # Order: clear residue / kill legacy installer, the tun subnet rules,
+        # then the config (fetched on the first start after boot, else the
+        # stored one).
         ExecStartPre = [
           "+${tunCleanup}"
+          "+${tunSubnetRule}"
           "${configScript} start"
         ];
         ExecStart = "${singboxPkg}/bin/sing-box -D ${stateDir} run -c ${liveConfig}";
