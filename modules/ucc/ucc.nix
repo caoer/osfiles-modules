@@ -198,7 +198,7 @@ in
   config = lib.mkIf cfg.enable {
     assertions = [
       {
-        assertion = codexUser -> pkgs.stdenv.isLinux;
+        assertion = codexUser -> pkgs.stdenv.hostPlatform.isLinux;
         message = "osf.ucc.codex.install = \"user\" is Linux-only (a systemd user unit).";
       }
     ];
@@ -233,7 +233,7 @@ in
       # falls back to its bundled copy with an error in the daemon log.
       packages = lib.optionals cfg.codex.enable (
         lib.optional (cfg.codex.install == "nix") cfg.codex.package
-        ++ lib.optional pkgs.stdenv.isLinux pkgs.bubblewrap
+        ++ lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.bubblewrap
       );
 
       file = {
