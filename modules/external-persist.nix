@@ -60,7 +60,6 @@ in
         # systemd-initrd wipe-root: move the old @ aside and recreate an empty @ subvolume
         # on the root btrfs (label "nixos") every boot. Validated pattern (impermanence-design).
         boot.initrd = {
-          systemd.enable = lib.mkDefault true;
           supportedFilesystems = [ "btrfs" ];
           systemd.services.wipe-root = {
             description = "Wipe root subvolume on boot";
