@@ -184,7 +184,7 @@ in
       # bubblewrap: codex's Linux sandbox looks for bwrap on PATH and only
       # falls back to its bundled copy with an error in the daemon log.
       packages = lib.optionals cfg.codex.enable (
-        [ cfg.codex.package ] ++ lib.optional pkgs.stdenv.isLinux pkgs.bubblewrap
+        [ cfg.codex.package ] ++ lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.bubblewrap
       );
 
       file = {

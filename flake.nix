@@ -74,10 +74,8 @@
     #
     # Deliberately NO `inputs.nixpkgs.follows`: upstream pins its own nixpkgs
     # plus a `systems` triplet for bun2nix, and overriding it breaks their
-    # eval guards. That triplet is why the re-export below is guarded —
-    # upstream builds aarch64-darwin/aarch64-linux/x86_64-linux and NOT
-    # x86_64-darwin, which IS in this flake's `systems`. Unguarded, every
-    # `nix flake show`/`check` would fail on that system.
+    # eval guards. The re-export below is guarded so a system upstream does
+    # not build evaluates to no hunk instead of failing `nix flake show`/`check`.
     hunk.url = "github:modem-dev/hunk/v0.18.2";
 
     # Pinned nixpkgs for yazi 26.9.1 — same rev osfiles / the fleet run.
@@ -101,7 +99,6 @@
         "x86_64-linux"
         "aarch64-linux"
         "aarch64-darwin"
-        "x86_64-darwin"
       ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
     in

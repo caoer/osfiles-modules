@@ -29,7 +29,7 @@ labels:
 
 steps:
   - name: build-and-cache
-    image: nixos/nix:2.34.8
+    image: nixos/nix:2.35.4
     environment:
       NIKS3_TOKEN:
         from_secret: niks3_token
@@ -48,7 +48,7 @@ steps:
       - export NIKS3_AUTH_TOKEN_FILE=/tmp/niks3-token
       - export NIKS3_SERVER_URL=https://niks3.0xtau.com
       # Pin niks3 to the rev osfiles locks (nixpkgs' niks3 lags --pin support).
-      - nix profile install github:Mic92/niks3/780939adecefc2f84be700a6f9ae1cc9385ad240#niks3
+      - nix profile add github:Mic92/niks3/780939adecefc2f84be700a6f9ae1cc9385ad240#niks3
       # --pin takes exactly one store path and upserts, shielding the closure
       # from the server's 30-day GC even when tmux goes untouched for months.
       - niks3 push --pin "osf-tmux-x86_64-linux" ./result
@@ -63,7 +63,7 @@ steps:
         done
 
   - name: paseo
-    image: nixos/nix:2.34.8
+    image: nixos/nix:2.35.4
     environment:
       NIKS3_TOKEN:
         from_secret: niks3_token
@@ -79,7 +79,7 @@ steps:
       - printf '%s' "$NIKS3_TOKEN" > /tmp/niks3-token
       - export NIKS3_AUTH_TOKEN_FILE=/tmp/niks3-token
       - export NIKS3_SERVER_URL=https://niks3.0xtau.com
-      - nix profile install github:Mic92/niks3/780939adecefc2f84be700a6f9ae1cc9385ad240#niks3
+      - nix profile add github:Mic92/niks3/780939adecefc2f84be700a6f9ae1cc9385ad240#niks3
       - niks3 push --pin "osf-paseo-x86_64-linux" ./result
       - niks3 push --pin "osf-paseo-src" ./result-1
       - |
@@ -102,7 +102,7 @@ steps:
   # build itself needs no network. The output is pushed too; it hits only
   # for a consumer whose nixpkgs matches this flake's lock.
   - name: sing-box-dashboard
-    image: nixos/nix:2.34.8
+    image: nixos/nix:2.35.4
     environment:
       NIKS3_TOKEN:
         from_secret: niks3_token
@@ -128,7 +128,7 @@ steps:
       - printf '%s' "$NIKS3_TOKEN" > /tmp/niks3-token
       - export NIKS3_AUTH_TOKEN_FILE=/tmp/niks3-token
       - export NIKS3_SERVER_URL=https://niks3.0xtau.com
-      - nix profile install github:Mic92/niks3/780939adecefc2f84be700a6f9ae1cc9385ad240#niks3
+      - nix profile add github:Mic92/niks3/780939adecefc2f84be700a6f9ae1cc9385ad240#niks3
       - niks3 push --pin "osf-sing-box-dashboard-x86_64-linux" ./result
       - niks3 push --pin "osf-sing-box-dashboard-pnpm-deps" ./result-1
       - niks3 push --pin "osf-sing-box-dashboard-color-schemes" ./result-2
