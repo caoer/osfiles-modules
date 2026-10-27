@@ -1,12 +1,14 @@
 # modules/ucc/lib.nix — shared builders for the agent profile, used by BOTH
 # the NixOS module (modules/ucc) and the Foreign system-manager module
-# (modules/paseo). ONE source of truth for the UCC installer (always the
-# latest get-ucc.sui.pics release) and the paseo config render; the platform
+# (modules/paseo). ONE source of truth for the UCC installer (the release the
+# host's ring has reached, else get-ucc's published default) and the paseo
+# config render; the platform
 # modules differ only in how they wire secrets, PATH, systemd options, and
 # the per-platform agentPath tail around these.
 { pkgs }:
 let
-  installerBaseUrl = "https://get-ucc.sui.pics/installer";
+  installerOrigin = "https://get-ucc.sui.pics";
+  installerBaseUrl = "${installerOrigin}/installer";
 
   # Model presets — catalogs of known third-party providers that expose
   # Anthropic-compatible APIs. Presets carry the model list + display metadata;
@@ -103,9 +105,10 @@ in
 {
   inherit modelPresets;
 
-  # UCC installer always pulls the latest release served by get-ucc.sui.pics
-  # (the worker bakes DAEMON_VERSION into the rendered installer). No nix pin
-  # — a new tag is live as soon as CI publishes it. The installer itself
+  # UCC installer pulls the release the host's ring has reached on the fleet
+  # wire (get-ucc /pin/<release>/installer), else the default get-ucc.sui.pics
+  # publishes (the worker bakes DAEMON_VERSION into the rendered installer).
+  # No nix pin — the ring, not a lock bump, moves a host. The installer itself
   # skips daemon/node/bundle/native when they already match that release.
   # CLI tools (curl, bash, coreutils, gnugrep, …) come from the caller's
   # systemd unit PATH — NixOS via `path`, Foreign via Environment PATH.
@@ -187,14 +190,45 @@ in
       set -euo pipefail
 
       UCC_TOKEN=$(cat ${tokenSecretPath})
-      UCC_INSTALLER_URL="${installerBaseUrl}?user=${uccUser}&token=$UCC_TOKEN"
       ENCRYPTION_PASSWORD=$(cat ${passwordSecretPath})
+
+      # The release this host's ring has reached (contracts wire/v9 § boot),
+      # asked of the fleet wire object at the daemon's own origin and under its
+      # own host key, both read from the env chain the daemon's unit sources.
+      # Any answer but a release — null, an error, a timeout — installs
+      # get-ucc's published default, so a reboot never installs a release its
+      # ring has not reached. An env file that fails reads as unset.
+      uccEnv() (
+        set +eu
+        for f in default-env.sh user-env.sh user-override.sh; do
+          [ -f "${home}/.local/share/ucc/$f" ] && . "${home}/.local/share/ucc/$f" >/dev/null 2>&1
+        done
+        printf '%s' "''${!1:-}"
+      )
+      PAGES=$(uccEnv CCC_PAGES_URL || true)
+      PAGES=''${PAGES:-https://page.sui.pics}
+      HOST=$(uccEnv MACHINE_NAME || true)
+      if [ -z "$HOST" ]; then
+        HOST=$(uname -n)
+        HOST=''${HOST,,}
+        HOST=''${HOST%%.*}
+      fi
+      RELEASE=$(curl -fsS --max-time 10 -G --data-urlencode "host=$HOST" \
+        -H "Authorization: Bearer ${uccUser}:$UCC_TOKEN" "''${PAGES%/}/w/release" 2>/dev/null \
+        | ${pkgs.jq}/bin/jq -r '.release | strings' 2>/dev/null || true)
+      if [[ "$RELEASE" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        UCC_INSTALLER_URL="${installerOrigin}/pin/$RELEASE/installer?user=${uccUser}&token=$UCC_TOKEN"
+        TARGET="$RELEASE (the ring release of $HOST)"
+      else
+        UCC_INSTALLER_URL="${installerBaseUrl}?user=${uccUser}&token=$UCC_TOKEN"
+        TARGET="latest"
+      fi
 
       CURRENT=""
       if [ -x "${localBin}/ccc-statusd" ]; then
         CURRENT=$("${localBin}/ccc-statusd" version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' | head -1 || true)
       fi
-      echo "ucc: installing latest (currently ''${CURRENT:-none})"
+      echo "ucc: installing $TARGET (currently ''${CURRENT:-none})"
 
       export ENCRYPTION_PASSWORD
 
