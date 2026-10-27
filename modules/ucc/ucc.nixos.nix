@@ -272,44 +272,46 @@ let
 
   installerUnits = lib.mapAttrs' (
     name: ucfg:
-    lib.nameValuePair "ucc-update-${name}" (
-      {
-        description = "UCC installer for ${name} (latest release)";
-        after = [
-          "sops-nix.service"
-          "network-online.target"
-        ]
-        ++ lib.optional (daemonInUserUnit name ucfg) "home-manager-${utils.escapeSystemdPath name}.service";
-        wants = [
-          "sops-nix.service"
-          "network-online.target"
-        ];
-        wantedBy = [ "multi-user.target" ];
-        path = installerPackages;
-        environment = nixLdEnvironment;
-        enable = ucfg.bootFetch;
-        serviceConfig = {
-          Type = "oneshot";
-          User = name;
-          RemainAfterExit = true;
-        }
-        // lib.optionalAttrs ucfg.bootFetch {
-          # Opted-in accounts run the installer itself under the lingering user
-          # manager. Every process it starts then inherits a user cgroup instead
-          # of ucc-update-<user>.service, so stopping or restarting this system
-          # unit cannot kill a resident mrd (or another detached helper).
-          ExecStart =
-            if daemonInUserUnit name ucfg then installerThroughUserUnit name else mkInstallerScript name ucfg;
-        }
-        // lib.optionalAttrs (daemonInUserUnit name ucfg) {
-          ExecStartPre = daemonToUserUnit "pre";
-          ExecStartPost = daemonToUserUnit "post";
-        };
+    lib.nameValuePair "ucc-update-${name}" {
+      description = "UCC installer for ${name} (latest release)";
+      after = [
+        "sops-nix.service"
+        "network-online.target"
+      ]
+      ++ lib.optional (daemonInUserUnit name ucfg) "home-manager-${utils.escapeSystemdPath name}.service";
+      wants = [
+        "sops-nix.service"
+        "network-online.target"
+      ];
+      wantedBy = [ "multi-user.target" ];
+      # The installer runs at boot; a running host takes new releases over
+      # the wire. A switch that changes this unit (the installer script, its
+      # PATH, nixpkgs) leaves the running unit alone, so a switch never
+      # re-installs under live seats or moves a host to the published pin.
+      # switch-to-configuration reads this flag from the new unit, so the
+      # switch that brings it in is already covered.
+      restartIfChanged = false;
+      path = installerPackages;
+      environment = nixLdEnvironment;
+      enable = ucfg.bootFetch;
+      serviceConfig = {
+        Type = "oneshot";
+        User = name;
+        RemainAfterExit = true;
+      }
+      // lib.optionalAttrs ucfg.bootFetch {
+        # Opted-in accounts run the installer itself under the lingering user
+        # manager. Every process it starts then inherits a user cgroup instead
+        # of ucc-update-<user>.service, so stopping or restarting this system
+        # unit cannot kill a resident mrd (or another detached helper).
+        ExecStart =
+          if daemonInUserUnit name ucfg then installerThroughUserUnit name else mkInstallerScript name ucfg;
       }
       // lib.optionalAttrs (daemonInUserUnit name ucfg) {
-        restartTriggers = [ (mkInstallerScript name ucfg) ];
-      }
-    )
+        ExecStartPre = daemonToUserUnit "pre";
+        ExecStartPost = daemonToUserUnit "post";
+      };
+    }
   ) cfg.users;
 
   # Opted-in accounts only (daemonUserUnit). An explicit linger = false wins
