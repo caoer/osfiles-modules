@@ -13,10 +13,11 @@
 # reports a new version and never downloads or installs one.
 #
 # bin/orca-ide wraps the shim with what headless `orca-ide serve` needs:
-#   PATH     Xvfb (Electron serve starts it by bare name when DISPLAY is unset),
-#            the computer-use tools from the deb's Depends (python3 + gi,
-#            xdotool, xclip, xdg-utils), then the NixOS system and per-user
-#            profiles, which Orca's own PATH augmentation leaves out.
+#   PATH     Xvfb (Electron serve starts it by bare name when DISPLAY is unset)
+#            and the computer-use tools from the deb's Depends (python3 + gi,
+#            xdotool, xclip, xdg-utils) ahead, the NixOS system profile after,
+#            which Orca's own PATH augmentation leaves out. The account's own
+#            profile is the caller's to put on PATH (N's orca-<account> unit does).
 #   fonts    the host's /etc/fonts when it has one, else a DejaVu fontconfig.
 # The Electron binary itself is not wrapped: the shim finds it by name next to
 # resources/.
@@ -160,7 +161,7 @@ stdenv.mkDerivation rec {
     cp -a opt/Orca $out/opt/Orca
     cp -a usr/share $out/share
     substituteInPlace $out/share/applications/*.desktop \
-      --replace-quiet /opt/Orca/orca-ide $out/bin/orca-ide
+      --replace-quiet /opt/Orca/orca-ide $out/opt/Orca/orca-ide
 
     # chrome-sandbox cannot be setuid in the store; Chromium uses the user
     # namespace sandbox instead.
@@ -176,7 +177,7 @@ stdenv.mkDerivation rec {
           xdg-utils
         ]
       } \
-      --suffix PATH : /run/current-system/sw/bin:/etc/profiles/per-user/dev/bin \
+      --suffix PATH : /run/current-system/sw/bin \
       --prefix GI_TYPELIB_PATH : ${at-spi2-core}/lib/girepository-1.0 \
       --run '[ -n "''${FONTCONFIG_FILE-}" ] || [ -e /etc/fonts/fonts.conf ] || export FONTCONFIG_FILE=${fallbackFonts}'
 
