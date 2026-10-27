@@ -222,6 +222,9 @@
           paseo = pkgs.callPackage ./packages/paseo.nix { };
           default = paseo;
           codex = pkgs.callPackage ./packages/codex.nix { };
+          # Orca's headless server (`orca-ide serve`) — upstream's Linux .deb;
+          # bump `version` + `hash` in packages/orca.nix.
+          orca = pkgs.callPackage ./packages/orca.nix { };
           metacubexd = pkgs.callPackage ./packages/metacubexd.nix { };
           sing-box-dashboard = pkgs.callPackage ./packages/sing-box-dashboard.nix {
             src = inputs.sing-box-dashboard-src;
