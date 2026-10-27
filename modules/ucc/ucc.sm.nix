@@ -83,6 +83,10 @@ in
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
       wantedBy = [ "multi-user.target" ];
+      # The installer runs at boot; a running host takes new releases over the
+      # wire. An activation that changes this unit leaves the running unit
+      # alone (system-manager reads the flag from the new unit).
+      restartIfChanged = false;
 
       # Stay green until the operator pushes the secrets post-activation; the
       # consumer's push-secrets path restarts this unit once they land.
