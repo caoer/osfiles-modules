@@ -7,9 +7,25 @@
   stdenv,
   fetchurl,
   autoPatchelfHook,
+  patchelf,
 }:
 
 let
+  # patchelf 0.18 and 0.19 write an ELF this Bun-compiled binary cannot load:
+  # it dies with SIGSEGV inside ld.so before main, on any glibc. 0.15.2
+  # patches the same binary into one that runs. Every patchelf call in the
+  # build (autoPatchelfHook, the fixup's shrink-rpath) resolves `patchelf`
+  # on PATH, so preFixup puts this one first.
+  patchelfForBun = patchelf.overrideAttrs (_: {
+    version = "0.15.2";
+    src = fetchurl {
+      url = "https://github.com/NixOS/patchelf/releases/download/0.15.2/patchelf-0.15.2.tar.bz2";
+      hash = "sha256-F3RfVkFZyOIo/EEtplogSLhGxLa0Igt3y/IkFuAvLXw=";
+    };
+    patches = [ ];
+    doCheck = false;
+  });
+
   version = "2.1.1";
 
   # Manifest platform keys → nix system + SRI hashes (sha256 of the raw binary).
@@ -58,6 +74,9 @@ stdenv.mkDerivation {
   # linked executable"). autoPatchelfHook rewrites interpreter + rpath.
   nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [ autoPatchelfHook ];
   buildInputs = lib.optionals stdenv.hostPlatform.isLinux [ (lib.getLib stdenv.cc.cc) ];
+  preFixup = lib.optionalString stdenv.hostPlatform.isLinux ''
+    export PATH=${patchelfForBun}/bin:$PATH
+  '';
 
   installPhase = ''
     runHook preInstall
