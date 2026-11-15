@@ -108,9 +108,6 @@ let
   # carries credential DB), "credential" = leaf (per-device credential, no secret).
   authClass = if hostEntry != null then (hostEntry.auth or "secret") else "secret";
   isBackbone = authClass == "secret";
-  # Bootstrap-peer hubs are what new leaves dial into to join, so they must
-  # reload the credential DB the moment it changes (see restartUnits below).
-  isBootstrapPeer = builtins.elem cfg.hostname (map (p: p.name) mesh.bootstrapPeers);
   credentialDbPath = "/var/lib/easytier/credentials.json";
 
   easytierPkg = cfg.package;
@@ -351,22 +348,13 @@ in
           path = credentialDbPath;
           mode = "0400";
           # EasyTier loads the credential DB only at process start — no reload,
-          # no SIGHUP, no watcher (verified in 2.6.4 + easytier-cli has no import
-          # verb). So a plain sops deploy that changes the DB is a SILENT NO-OP
-          # for credential trust until easytier restarts. Auto-restart fixes that,
-          # but ONLY on bootstrap-peer hubs: a new leaf's pubkey propagates
-          # mesh-wide via OSPF (HMAC-signed with network_secret) from any single
-          # publisher, so restarting every backbone on each leaf add would flap
-          # the mesh for zero reachability gain. Restarting the bootstrap hubs
-          # (the dial-in anchors for new defaultPeers leaves) is sufficient.
-          # Foreign hosts take this secret through the osf CLI instead
-          # (osfiles modules/foreign/easytier.nix, which declares no
-          # restartUnits for it). There easytier restarts after a DB change only
-          # through the CLI's legacy restart set, which applies only when no
-          # secret on the host declares restartUnits (secretRestartUnits in
-          # osfiles cli/src/commands/rebuild.ts). A Foreign bootstrap hub whose
-          # other secrets declare restartUnits needs a manual restart.
-          restartUnits = lib.optionals isBootstrapPeer [ "easytier.service" ];
+          # no SIGHUP, no watcher (2.6.4; easytier-cli has no import verb). A
+          # backbone refuses a member whose credential its running process has
+          # not loaded ("invalid proof and unknown credential"), whichever
+          # backbone the member dials, so every backbone restarts on a DB change.
+          # Foreign backbones take this secret through the osf CLI, from osfiles
+          # modules/foreign/easytier.nix, which declares the same restart.
+          restartUnits = [ "easytier.service" ];
         };
         systemd.tmpfiles.rules = [ "d /var/lib/easytier 0700 root root -" ];
       })
