@@ -62,11 +62,11 @@ let
   # The egress guard (config below): the routed users, and the destinations
   # they reach without the tun. Off on a root instance, whose TUN carries
   # every user.
-  guardOn = cfg.egressGuard.enable && cfg.user != "root";
-  guardTable = "${serviceName}-egress-guard";
-  guardUsers = lib.concatMapStringsSep ", " (u: ''"${u}"'') ([ cfg.user ] ++ cfg.extraUsers);
+  egressOn = cfg.egressGuard.enable && cfg.user != "root";
+  egressTable = "${serviceName}-egress-guard";
+  egressUsers = lib.concatMapStringsSep ", " (u: ''"${u}"'') ([ cfg.user ] ++ cfg.extraUsers);
   isV6 = lib.hasInfix ":";
-  guardV4 = [
+  egressV4 = [
     "10.0.0.0/8"
     "100.64.0.0/10"
     "127.0.0.0/8"
@@ -77,7 +77,7 @@ let
     "255.255.255.255"
   ]
   ++ lib.filter (a: !isV6 a) cfg.routeExcludeAddress;
-  guardV6 = [
+  egressV6 = [
     "::1"
     "fc00::/7"
     "fe80::/10"
@@ -806,7 +806,7 @@ in
         message = "osf.uccSingbox: preset 'tun-us-strict' requires lanProxy.server to be configured.";
       }
       {
-        assertion = !guardOn || config.networking.nftables.enable;
+        assertion = !egressOn || config.networking.nftables.enable;
         message = "osf.uccSingbox.egressGuard: the guard is an nftables table; enable networking.nftables on this host.";
       }
     ];
@@ -857,19 +857,19 @@ in
     # (left to the kernel by design: the fleet's own addresses, VM subnets,
     # gateway LANs). Everything else from these users is dropped and counted;
     # 6/min reach the journal with the uid.
-    #   read      nft list table inet ${guardTable}
-    #   rollback  nft delete table inet ${guardTable}
-    networking.nftables.tables.${guardTable} = lib.mkIf guardOn {
+    #   read      nft list table inet ${egressTable}
+    #   rollback  nft delete table inet ${egressTable}
+    networking.nftables.tables.${egressTable} = lib.mkIf egressOn {
       family = "inet";
       # auto-merge: the private ranges and routeExcludeAddress overlap.
       content = ''
         set inside4 {
           type ipv4_addr; flags interval; auto-merge;
-          elements = { ${lib.concatStringsSep ", " guardV4} }
+          elements = { ${lib.concatStringsSep ", " egressV4} }
         }
         set inside6 {
           type ipv6_addr; flags interval; auto-merge;
-          elements = { ${lib.concatStringsSep ", " guardV6} }
+          elements = { ${lib.concatStringsSep ", " egressV6} }
         }
         chain output {
           type filter hook output priority filter + 10; policy accept;
@@ -878,8 +878,8 @@ in
           ct direction reply accept
           ip daddr @inside4 accept
           ip6 daddr @inside6 accept
-          meta skuid { ${guardUsers} } limit rate 6/minute burst 6 packets log prefix "${guardTable} drop: " level warn flags skuid
-          meta skuid { ${guardUsers} } counter drop
+          meta skuid { ${egressUsers} } limit rate 6/minute burst 6 packets log prefix "${egressTable} drop: " level warn flags skuid
+          meta skuid { ${egressUsers} } counter drop
         }
       '';
     };
