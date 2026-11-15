@@ -8,7 +8,9 @@
 # stored config when that fetch fails; afterwards each revision the mesh
 # Worker pushes down the -fleet socket runs the -update, which restarts the
 # router only when the raw answer changed, and puts the previous config back
-# when the restart fails or the router's egress check gets worse.
+# when the restart fails or the router's egress check gets worse. `fleet =
+# false` leaves the socket out, and the stored config stays until -update
+# runs or the next boot.
 #
 # Three modes:
 #   tun-us        — direct: UCC profile processes proxy, everything else DIRECT.
@@ -19,8 +21,11 @@
 #   tun-cn        — relay: full geo routing + UCC relay chain (CN / censored).
 #
 # The module post-processes the API response to inject include_uid (scopes the
-# TUN to a single system user), auto_redirect (Linux), and optionally a LAN
-# proxy outbound (tun-us-strict).
+# TUN to a single system user), auto_redirect off, optionally a LAN proxy
+# outbound (tun-us-strict), and the rules that keep a flow no registry row
+# claimed off Anthropic and OpenAI from the host's own address: a process
+# lookup miss, ucc-codex's node, a profile with no row
+# (./anthropic-failclosed.jq; with failClosed off, ./failclosed-hold.jq).
 #
 # Usage (direct, US host):
 #   osf.uccSingbox = {
@@ -54,6 +59,34 @@ let
   inst = cfg.instanceName;
   serviceName = "sing-box-ucc-${inst}";
 
+  # The egress guard (config below): the routed users, and the destinations
+  # they reach without the tun. Off on a root instance, whose TUN carries
+  # every user.
+  egressOn = cfg.egressGuard.enable && cfg.user != "root";
+  egressTable = "${serviceName}-egress-guard";
+  # By name: the table loads at runtime (its own unit, below), where names
+  # resolve, so an undeclared uid is fine.
+  egressUsers = lib.concatStringsSep ", " ([ cfg.user ] ++ cfg.extraUsers);
+  isV6 = lib.hasInfix ":";
+  egressV4 = [
+    "10.0.0.0/8"
+    "100.64.0.0/10"
+    "127.0.0.0/8"
+    "169.254.0.0/16"
+    "172.16.0.0/12"
+    "192.168.0.0/16"
+    "224.0.0.0/4"
+    "255.255.255.255"
+  ]
+  ++ lib.filter (a: !isV6 a) cfg.routeExcludeAddress;
+  egressV6 = [
+    "::1"
+    "fc00::/7"
+    "fe80::/10"
+    "ff00::/8"
+  ]
+  ++ lib.filter isV6 cfg.routeExcludeAddress;
+
   # The installed config, the raw API answer it was rendered from, and the
   # renderer that rendered it. Kept across reboots: a start whose fetch fails
   # runs on what is here.
@@ -66,6 +99,25 @@ let
   # tun-us-strict uses the same API preset as tun-us — the "strict" part
   # (LAN proxy + final route change) is handled in post-processing.
   apiPreset = if isStrict then "tun-us" else cfg.preset;
+
+  # The blocks sing-box's ip_is_private matches (sing N.IsPublicAddr: private,
+  # link-local, multicast), which the API answer routes direct ahead of every
+  # profile rule. auto_route leaves them out of the tun, so the kernel routes
+  # them as if no tun were there: a routed user's replies and forwarded flows
+  # to a host-local subnet (docker, k3s, VM and collector sim links, the mesh)
+  # reach that subnet, whenever it comes up. Without auto_redirect, auto_route
+  # sends every routed packet to the tun by uid, replies of the user's own
+  # listeners included, and the tun stack drops what it did not open.
+  privateBlocks = [
+    "10.0.0.0/8"
+    "172.16.0.0/12"
+    "192.168.0.0/16"
+    "169.254.0.0/16"
+    "224.0.0.0/4"
+    "fc00::/7"
+    "fe80::/10"
+    "ff00::/8"
+  ];
 
   fleetUrl = "${
     lib.replaceStrings [ "https://" "http://" ] [ "wss://" "ws://" ] cfg.apiUrl
@@ -119,24 +171,23 @@ let
     # Post-process step 1: TUN fields
     # - Root (uid 0): omit include_uid so TUN captures ALL users' traffic
     # - Non-root: add include_uid to scope TUN to that user only
-    # - Enable auto_redirect on Linux (always recommended per upstream docs)
-    # - Exclude this host's own addresses from auto_route / auto_redirect, and
-    #   reject them in route.rules. sing-tun binds the auto_redirect listener
-    #   on IP:0_0_0_0 at a random port with no config knob (redirect_linux.go
-    #   picks netip.IPv4Unspecified), so on a host with a public IP that
-    #   listener is internet-reachable. A connection that did not arrive
-    #   through the REDIRECT rule carries no conntrack original-dst, so
-    #   sing-box reads the socket's own address as the destination — dest
-    #   <own-ip>:<redirect-port>. A `bypass` action hands that back to the
-    #   listener through `direct`, a self-feeding hairpin that pegs CPU;
-    #   `reject` closes the connection instead. The redirectGuard unit below
-    #   drops the seed traffic at the packet layer — except on lo, which it
-    #   admits: a local probe of the port (or the dual-stack listener reached
-    #   on ::1) reads as dest 127.0.0.1:<redirect-port> and seeds the same
-    #   hairpin (xu-lax: 16k self-connections/min, 3 cores). Loopback is
-    #   rejected as well: nothing legitimate reaches the router with a
-    #   loopback destination — the output REDIRECT chain returns for the
-    #   local address set, and loopback never routes through the tun.
+    # - auto_redirect off, whatever the API answer says. The process search
+    #   finds a flow's socket by the tuple sing-box sees, and auto_redirect
+    #   rewrites that tuple: (1) it REDIRECTs every TCP flow to one listener,
+    #   and Linux connect() reuses a local port across different
+    #   destinations, so two such flows collide on the listener's reply
+    #   tuple and conntrack remaps the second one's source port to a port no
+    #   socket holds; (2) its marks 0x2023-0x2025 all carry bit 0x2000, the
+    #   CNI portmap masquerade mark (k3s), so a connected UDP socket reaches
+    #   sing-box with the tun's address as its source. Either way the lookup
+    #   misses and the fail-closed rule refuses a profile's own flow. Plain
+    #   auto_route puts the routed users' sockets on the tun at connect time,
+    #   so sing-box sees each socket's own tuple.
+    # - Exclude this host's own addresses and the private blocks
+    #   (privateBlocks) from auto_route, and reject the own addresses and
+    #   loopback in route.rules: nothing legitimate reaches the router with
+    #   such a destination, and `direct` would hand it back to the host
+    #   itself.
     # - Exclude docker/br-/veth from auto_route so published containers
     #   don't enter the TUN.
     # - tun-us: force strict_route=false. API default true blackholes
@@ -160,7 +211,7 @@ let
       --argjson uid "$target_uid" \
       --arg extra_uids "$extra_uids" \
       --arg cidrs "$host_cidrs" \
-      --argjson ex_route ${lib.escapeShellArg (builtins.toJSON cfg.routeExcludeAddress)} \
+      --argjson ex_route ${lib.escapeShellArg (builtins.toJSON (privateBlocks ++ cfg.routeExcludeAddress))} \
       --arg ifaces "$docker_ifaces" \
       --argjson force_loose ${if isStrict then "false" else "true"} \
       '
@@ -168,7 +219,7 @@ let
         | ($extra_uids | split("\n") | map(select(length > 0) | tonumber)) as $more_uids
         | ($ifaces | split("\n") | map(select(length > 0))) as $ex_if
         | (.inbounds // [] | .[] | select(.type == "tun")) |= (
-            .auto_redirect = true
+            .auto_redirect = false
             | if $uid == 0 then del(.include_uid) else .include_uid = ([$uid] + $more_uids) end
             | if $force_loose then .strict_route = false else . end
             | .route_exclude_address = (((.route_exclude_address // []) + $ex_addr + $ex_route) | unique)
@@ -210,6 +261,23 @@ let
     ${lib.concatMapStrings (hook: ''
       ${hook} "$out"
     '') cfg.postFetch}
+
+    ${if cfg.failClosed then ''
+      # Post-process step 3: a flow no registry row claimed (a process lookup
+      # miss, ucc-codex's node, a profile with no row) never reaches Anthropic
+      # or OpenAI from this host's own address (./anthropic-failclosed.jq).
+      # Two commands, so set -e refuses the candidate when jq fails.
+      ${pkgs.jq}/bin/jq -f ${./anthropic-failclosed.jq} "$out" > "$out.tmp"
+      mv "$out.tmp" "$out"'' else ''
+      # Post-process step 3 with failClosed off: the IPv4-only profiles' IPv6
+      # guards (rule 4 of ./anthropic-failclosed.jq) — every account leaves
+      # through its own exit on IPv4 and IPv6 alike, whatever the flag — then
+      # the renderer-hold fail-closed (./failclosed-hold.jq): the shared
+      # node's OpenAI route, Anthropic refused, any found process direct.
+      ${pkgs.jq}/bin/jq --arg only v6guards -f ${./anthropic-failclosed.jq} "$out" > "$out.tmp"
+      mv "$out.tmp" "$out"
+      ${pkgs.jq}/bin/jq --arg home ${lib.escapeShellArg userHome} -f ${./failclosed-hold.jq} "$out" > "$out.tmp"
+      mv "$out.tmp" "$out"''}
     ${singboxPkg}/bin/sing-box check -c "$out"
 
     profiles=$(${pkgs.jq}/bin/jq '[.route.rules // [] | .[] | select(.process_path_regex)] | length' "$out")
@@ -456,52 +524,14 @@ let
 
   guardTable = "${serviceName}-guard";
 
-  # sing-box picks the auto_redirect port at start and binds it on IP:0_0_0_0.
-  # Only two paths legitimately reach that listener: an output-chain REDIRECT
-  # (rewritten to IP:127_0_0_1, arrives on lo) and a prerouting REDIRECT (arrives
-  # NAT'd, so conntrack carries the dnat status). Everything else on that port
-  # is an unsolicited connection to the host's public IP — drop it, so the
-  # transparent-proxy listener is not an open port on the internet.
-  redirectGuard = pkgs.writeShellScript "${serviceName}-redirect-guard" ''
-    set -u
-    nft=${pkgs.nftables}/bin/nft
-
-    port=""
-    for _ in $(${pkgs.coreutils}/bin/seq 1 60); do
-      port="$($nft list table inet sing-box 2>/dev/null \
-        | ${pkgs.gnugrep}/bin/grep -oE 'redirect to :[0-9]+' \
-        | ${pkgs.gnugrep}/bin/grep -oE '[0-9]+' \
-        | ${pkgs.coreutils}/bin/head -1)"
-      [ -n "$port" ] && break
-      ${pkgs.coreutils}/bin/sleep 1
-    done
-
-    if [ -z "$port" ]; then
-      echo "${serviceName}: no auto_redirect port in table inet sing-box — guard not installed" >&2
-      exit 0
-    fi
-
-    $nft delete table inet ${guardTable} 2>/dev/null
-    $nft -f - <<EOF
-    table inet ${guardTable} {
-      chain input {
-        type filter hook input priority filter - 5; policy accept;
-        iifname "lo" return
-        meta l4proto != tcp return
-        tcp dport $port ct status dnat return
-        tcp dport $port counter drop
-      }
-    }
-    EOF
-    echo "${serviceName}: redirect-port guard installed — tcp/$port drops non-redirected inbound"
-  '';
-
   # Residual / conflicting TUN state:
   # - A crash or SIGKILL leaves priority-90xx rules + route table 2022 (auto_route)
   #   pointing at a dead tun — blackhole risk on next start.
   # - The pre-Nix installer (~/.local/ucc-sing-box, sudo ./bin/sing-box run -C .)
   #   claims the same TEST-NET addresses (192.0.2.0/30) and table 2022, so the
   #   managed unit dies with: "set routes: add route 0: file exists".
+  # - table inet ${serviceName}-guard, an input filter on an auto_redirect
+  #   port; nothing in this module creates it, so a start drops any found.
   # Stop legacy installer processes, flush auto_route residue, drop orphan tuns.
   tunCleanup = pkgs.writeShellScript "${serviceName}-tun-cleanup" ''
     set +e
@@ -529,6 +559,7 @@ let
           done
       $ip $fam route flush table 2022 2>/dev/null
     done
+    ${delTunSubnetRules}
 
     for dev in $($ip -o link show 2>/dev/null \
       | ${pkgs.gawk}/bin/awk -F': ' '{print $2}' \
@@ -543,6 +574,35 @@ let
           ;;
       esac
     done
+    exit 0
+  '';
+
+  # The tun's own subnets (the addresses the profile gives the tun: TEST-NET-1
+  # and fdfe:dcba:9876::/126) go to main ahead of every other policy rule.
+  # sing-tun's system stack answers each routed user's TCP SYN from its own
+  # listener on the tun's address, as root, to the tun's peer address; the
+  # include_uid rules (9000) send root past this tun's own table, so that
+  # answer follows whatever rule comes next. Where a second auto_route tun's
+  # table covers the subnet (agent-runtime's sandbox: table 2032 from rule
+  # 9200, 192.0.0.0/9 via its tun0), the SYN-ACK went into that tun, which
+  # reset it, and every routed user's TCP died at the handshake. main holds
+  # the kernel's connected route while the tun is up; suppress_prefixlength 0
+  # lets the lookup fall through when it is not. 5190 sorts ahead of
+  # tailscale (5210+), sing-box (9000+) and agent-runtime (9200+).
+  tunSubnetRules = [
+    "-4 rule %s priority 5190 to 192.0.2.0/30 lookup main suppress_prefixlength 0"
+    "-6 rule %s priority 5190 to fdfe:dcba:9876::/126 lookup main suppress_prefixlength 0"
+  ];
+  delTunSubnetRules = lib.concatMapStrings (r: ''
+    while ${pkgs.iproute2}/bin/ip ${lib.replaceStrings [ "%s" ] [ "del" ] r} 2>/dev/null; do :; done
+  '') tunSubnetRules;
+  tunSubnetRule = pkgs.writeShellScript "${serviceName}-tun-subnet-rule" ''
+    set +e
+    ${delTunSubnetRules}
+    ${lib.concatMapStrings (r: ''
+      ${pkgs.iproute2}/bin/ip ${lib.replaceStrings [ "%s" ] [ "add" ] r} \
+        || echo "${serviceName}: not installed: ip ${lib.replaceStrings [ "%s" ] [ "add" ] r}" >&2
+    '') tunSubnetRules}
     exit 0
   '';
 
@@ -582,6 +642,22 @@ in
         CIDRs the TUN leaves to the next policy rule (route_exclude_address):
         a destination another uid-scoped tun on the host owns at a lower rule
         priority than this instance's 90xx rules.
+      '';
+    };
+
+    egressGuard.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Fail closed when the TUN is absent: a packet from `user` or
+        `extraUsers` to an outside address leaves by a tun, by loopback, as a
+        reply, to a private/link-local/multicast address or to
+        `routeExcludeAddress` — or is dropped (table inet <service>-egress-guard,
+        outside sing-box, so it holds while sing-box is stopped, restarting or
+        running without its tun). No route, outbound or exit changes. Off on a
+        root instance (its TUN carries every user). Loaded by the unit
+        <service>-egress-guard; rollback at runtime:
+        `systemctl stop <service>-egress-guard`.
       '';
     };
 
@@ -687,6 +763,30 @@ in
       '';
     };
 
+    fleet = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Run the -fleet socket, which applies each registry revision the mesh
+        Worker pushes. Off, the unit is not in the system at all, so no
+        switch or boot starts it: the router keeps its stored config, and a
+        new one arrives only through -update by hand or the router's fetch on
+        its first start after boot.
+      '';
+    };
+
+    failClosed = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Render the rules of ./anthropic-failclosed.jq into the config. Off
+        (the renderer hold on seat hosts) renders their IPv6 guards alone and
+        ./failclosed-hold.jq in place of the rest: the shared node's OpenAI
+        route, Anthropic refused for any flow no registry row claimed, any
+        found process direct.
+      '';
+    };
+
     logLevel = lib.mkOption {
       type = lib.types.enum [
         "trace"
@@ -715,16 +815,94 @@ in
     # What sing-box writes back through its tun — the answers to the DNS
     # queries hijack-dns took off the routed users — arrives on that tun
     # from the upstream resolver's address. The nixos-fw rpfilter chain's fib
-    # lookup for that source lands in main (eth0, not the tun) and drops it;
-    # TCP is unaffected because auto_redirect carries it over nftables. Cached
-    # names still answer, so the symptom is "some names resolve, new ones time
-    # out". The kernel names the tun (the first free tunN — EasyTier may hold
-    # tun0), so the exemption keys on the address the profile gives it
+    # lookup for that source lands in main (eth0, not the tun) and drops it.
+    # TCP and other UDP come back through the tun the same way (auto_redirect
+    # is off), and the same exemption covers them. Cached names still answer,
+    # so the symptom is "some names resolve, new ones time out". The kernel
+    # names the tun (the first free tunN — EasyTier may hold tun0), so the
+    # exemption keys on the address the profile gives it
     # (TEST-NET-1, the same one tunCleanup keys on), not on a name.
     networking.firewall.extraReversePathFilterRules = ''
       ip daddr 192.0.2.0/30 accept
       ip6 daddr fdfe:dcba:9876::/126 accept
     '';
+
+    # The tun stack answers each routed user's TCP SYN itself: sing-tun's
+    # system stack rewrites the SYN to its own listener on the tun's address
+    # and writes it back into the tun, so the kernel sees a new inbound
+    # connection on the tun. nixos-fw's input chain drops new connections on
+    # an untrusted interface; without this accept every routed user's TCP
+    # stalls at the handshake while DNS, answered in userspace, still works.
+    # Keyed on a tun interface as well as the tun's addresses, so a packet
+    # sent to TEST-NET from the LAN reaches no local listener.
+    networking.firewall.extraInputRules = ''
+      iifname "tun*" ip daddr 192.0.2.0/30 accept
+      iifname "tun*" ip6 daddr fdfe:dcba:9876::/126 accept
+    '';
+
+    # ── egress guard ──
+    # Every UCC exit and every Anthropic fail-closed rule lives inside the
+    # sing-box config, so while sing-box is stopped, restarting, or running
+    # without its tun (cos-stex-ucc-1 11-15: `active`, rule-set init hung, no
+    # tun), the routed users' traffic took the main table's default route
+    # from the host's own address. This table sits outside sing-box and
+    # holds whatever sing-box is doing. Keyed on the routed users (include_uid):
+    # nft sees a socket's uid, never its process path. What passes: any tun
+    # (this instance's tun is named by the kernel, the first free tunN —
+    # EasyTier may hold another; with the TUN up every outside flow of these
+    # users is routed into it or redirected onto sing-box's loopback
+    # listener), loopback, replies to connections someone else opened,
+    # private/link-local/multicast destinations, and routeExcludeAddress
+    # (left to the kernel by design: the fleet's own addresses, VM subnets,
+    # gateway LANs). Everything else from these users is dropped and counted;
+    # 6/min reach the journal with the uid.
+    #
+    # Loaded by its own oneshot, not declared in networking.nftables: the
+    # users match by name, which resolves on the host and not in the build
+    # sandbox that checks declared tables. nftables.service (tables mode)
+    # deletes and recreates only the tables it declares, so its reload and
+    # restart leave this one in place. The unit is separate from sing-box's,
+    # so turning the guard on or off never restarts sing-box.
+    #   read      nft list table inet ${egressTable}
+    #   rollback  systemctl stop ${egressTable}   (or nft delete table inet ${egressTable})
+    systemd.services.${egressTable} = lib.mkIf egressOn {
+      description = "Fail-closed egress for ${serviceName}'s routed users";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "nftables.service" ];
+      before = [ "${serviceName}.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        # One transaction: create-if-absent, delete, define. A rerun replaces
+        # the table atomically, with no moment without it.
+        ExecStart = "${pkgs.nftables}/bin/nft -f ${pkgs.writeText "${egressTable}.nft" ''
+          table inet ${egressTable}
+          delete table inet ${egressTable}
+          table inet ${egressTable} {
+            # auto-merge: the private ranges and routeExcludeAddress overlap.
+            set inside4 {
+              type ipv4_addr; flags interval; auto-merge;
+              elements = { ${lib.concatStringsSep ", " egressV4} }
+            }
+            set inside6 {
+              type ipv6_addr; flags interval; auto-merge;
+              elements = { ${lib.concatStringsSep ", " egressV6} }
+            }
+            chain output {
+              type filter hook output priority filter + 10; policy accept;
+              oifname "lo" accept
+              oifname "tun*" accept
+              ct direction reply accept
+              ip daddr @inside4 accept
+              ip6 daddr @inside6 accept
+              meta skuid { ${egressUsers} } limit rate 6/minute burst 6 packets log prefix "${egressTable} drop: " level warn flags skuid
+              meta skuid { ${egressUsers} } counter drop
+            }
+          }
+        ''}";
+        ExecStop = "${pkgs.nftables}/bin/nft delete table inet ${egressTable}";
+      };
+    };
 
     sops.secrets = {
       ${cfg.tokenSecret} = { };
@@ -745,15 +923,15 @@ in
       wantedBy = [ "multi-user.target" ];
 
       serviceConfig = {
-        # Order: clear residue / kill legacy installer, then the config
-        # (fetched on the first start after boot, else the stored one).
+        # Order: clear residue / kill legacy installer, the tun subnet rules,
+        # then the config (fetched on the first start after boot, else the
+        # stored one).
         ExecStartPre = [
           "+${tunCleanup}"
+          "+${tunSubnetRule}"
           "${configScript} start"
         ];
         ExecStart = "${singboxPkg}/bin/sing-box -D ${stateDir} run -c ${liveConfig}";
-        # Fence the auto_redirect listener once sing-box has published its port.
-        ExecStartPost = "+${redirectGuard}";
         # Unconditional teardown so crash residue cannot poison the next start.
         ExecStopPost = "+${tunCleanup}";
         # No CapabilityBoundingSet — process_path_regex routing needs broad
@@ -785,7 +963,7 @@ in
     # The mesh Worker pushes each registry revision down this socket; the
     # client applies it and answers (plan § 3.4). No timer: a host that is
     # offline catches up on the revision it is sent at reconnect.
-    systemd.services."${serviceName}-fleet" = {
+    systemd.services."${serviceName}-fleet" = lib.mkIf cfg.fleet {
       description = "Fleet socket for ${serviceName}: apply each pushed registry revision";
       after = [
         "network-online.target"

@@ -12,7 +12,9 @@
 # (`osf.paseo.users.<name>.paseoConfigFile`, REQUIRED — R3) with the @UCC_BIN@
 # placeholder replaced by the user's ucc bin dir, then materialized as a
 # WRITABLE copy at ~/.paseo/config.json by a systemd ExecStartPre `install` —
-# re-laid on every daemon start, so declarative content still wins. It is NOT a
+# re-laid on every daemon start, so declarative content still wins — and on a
+# switch by paseo-config-<user>, which re-lays it and reloads the running
+# daemon without a restart. It is NOT a
 # store symlink: paseo's onboard / config-save does an unconditional
 # writeFileSync to that path, which EROFS-crashes against a read-only nix-store
 # symlink — the writable copy fixes that while staying declarative. The file
@@ -167,6 +169,45 @@ in
         inherit (config.users.users.${name}) home;
         paseoHome = "${home}/.paseo";
         useDynamic = ucfg.paseoConfig != null;
+        regen =
+          if useDynamic then
+            "${mkGenScript name home ucfg.paseoConfig}"
+          else
+            ''
+              ${pkgs.coreutils}/bin/install -D -m 0600 ${renderPaseoConfig name home ucfg.paseoConfigFile} ${paseoHome}/config.json.tmp
+              ${pkgs.coreutils}/bin/mv -f ${paseoHome}/config.json.tmp ${paseoHome}/config.json
+            '';
+      in
+      lib.nameValuePair "paseo-config-${name}" {
+        # The switch path for config.json (agentLib.mkPaseoConfigApplyScript):
+        # restartIfChanged stays at its default, so a config change re-runs
+        # this unit while paseo-${name} itself keeps running.
+        description = "Apply the generated paseo config.json for ${name} to its running daemon";
+        after = lib.optional useDynamic "ucc-update-${name}.service";
+        # Before the daemon at boot: the daemon is not up yet, so this only
+        # lays the file and skips the reload.
+        before = [ "paseo-${name}.service" ];
+        wantedBy = [ "multi-user.target" ];
+        environment.PASEO_HOME = paseoHome;
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          User = name;
+          ExecStart = agentLib.mkPaseoConfigApplyScript {
+            inherit name paseoHome regen;
+            paseoPackage = paseoPkg;
+            daemonUnit = "paseo-${name}.service";
+            systemctl = "${config.systemd.package}/bin/systemctl";
+          };
+        };
+      }
+    ) paseoUsers
+    // lib.mapAttrs' (
+      name: ucfg:
+      let
+        inherit (config.users.users.${name}) home;
+        paseoHome = "${home}/.paseo";
+        useDynamic = ucfg.paseoConfig != null;
         # Legacy: static config from file with @UCC_BIN@ substitution
         configJson = renderPaseoConfig name home ucfg.paseoConfigFile;
         # Dynamic: gen script discovers ucc-* wrappers at start
@@ -193,9 +234,11 @@ in
         # KillMode=control-group), watch the switch SIGTERM the whole cgroup and
         # kill itself + its in-flight rebuild. Decouple the daemon restart from
         # the switch: a switch activates the new generation but leaves the
-        # RUNNING daemon (and its agents) untouched. The new paseo version /
-        # config.json applies on the next DELIBERATE restart (when no session is
-        # mid-flight: `systemctl restart paseo-${name}`) or on reboot.
+        # RUNNING daemon (and its agents) untouched. A new config.json reaches
+        # the running daemon through paseo-config-${name} (regen + live
+        # reload); a new paseo version applies on the next DELIBERATE restart
+        # (when no session is mid-flight: `systemctl restart paseo-${name}`) or
+        # on reboot.
         # Crash-recovery is unaffected — `Restart = on-failure` still applies.
         restartIfChanged = false;
         stopIfChanged = false;
