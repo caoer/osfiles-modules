@@ -64,7 +64,11 @@ let
   # every user.
   egressOn = cfg.egressGuard.enable && cfg.user != "root";
   egressTable = "${serviceName}-egress-guard";
-  egressUsers = lib.concatMapStringsSep ", " (u: ''"${u}"'') ([ cfg.user ] ++ cfg.extraUsers);
+  # Numeric: the ruleset is checked in the build sandbox, where names do not
+  # resolve. Each routed user's uid must be declared (assertion below).
+  egressUserNames = [ cfg.user ] ++ cfg.extraUsers;
+  egressUids = map (u: config.users.users.${u}.uid or null) egressUserNames;
+  egressUsers = lib.concatMapStringsSep ", " toString egressUids;
   isV6 = lib.hasInfix ":";
   egressV4 = [
     "10.0.0.0/8"
@@ -808,6 +812,10 @@ in
       {
         assertion = !egressOn || config.networking.nftables.enable;
         message = "osf.uccSingbox.egressGuard: the guard is an nftables table; enable networking.nftables on this host.";
+      }
+      {
+        assertion = !egressOn || !(lib.elem null egressUids);
+        message = "osf.uccSingbox.egressGuard: users.users.<name>.uid must be set for ${lib.concatStringsSep ", " egressUserNames} (the guard matches numeric uids).";
       }
     ];
 
