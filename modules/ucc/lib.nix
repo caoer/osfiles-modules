@@ -309,6 +309,26 @@ in
       resolvedPresets = builtins.mapAttrs (_: presetName: modelPresets.${presetName}) profilePresets;
       resolvedPresetsJson = builtins.toJSON resolvedPresets;
       paseoHome = "${home}/.paseo";
+      # A discovered profile provider runs through this guard: paseo starts
+      # every provider's command when its daemon starts and when a client asks
+      # for the provider list, and a Claude subscription profile with no login
+      # on this host only opens a session that cannot authenticate. The guard
+      # refuses (exit 78) a profile whose .env and settings.json set none of
+      # ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN / ANTHROPIC_BASE_URL and that
+      # has no .credentials.json; it is read at each start, so a credential the
+      # sync writes later is used at once. macOS keeps the login in the
+      # Keychain: there the launcher always runs.
+      loginGuard = pkgs.writeShellScript "ucc-login-guard" ''
+        w=$1
+        n=''${w##*/ucc-}
+        d=''${w%/bin/*}/profiles/$n
+        if [ "$(${pkgs.coreutils}/bin/uname -s)" != Darwin ] && [ -d "$d" ] && [ ! -e "$d/.credentials.json" ] \
+          && ! ${pkgs.gnugrep}/bin/grep -qsE 'ANTHROPIC_(API_KEY|AUTH_TOKEN|BASE_URL)' "$d/.env" "$d/settings.json"; then
+          echo "ucc-login-guard: profile $n has no login on this host" >&2
+          exit 78
+        fi
+        exec "$@"
+      '';
     in
     pkgs.writeShellScript "paseo-gen-config-${name}" ''
       set -euo pipefail
@@ -355,8 +375,8 @@ in
           fi
 
           PROVIDERS=$(echo "$PROVIDERS" | ${pkgs.jq}/bin/jq \
-            --arg n "$wname" --arg cmd "$wrapper" \
-            '. + { ($n): { "extends": "claude", "label": $n, "command": [$cmd] } }')
+            --arg n "$wname" --arg guard "${loginGuard}" --arg cmd "$wrapper" \
+            '. + { ($n): { "extends": "claude", "label": $n, "command": [$guard, $cmd] } }')
         done
       fi
 
