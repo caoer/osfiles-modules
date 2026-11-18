@@ -35,11 +35,11 @@ let
 in
 stdenv.mkDerivation rec {
   pname = "paseo";
-  version = "0.16.1";
+  version = "0.16.2";
 
   src = fetchurl {
     url = "https://github.com/getpaseo/paseo/releases/download/v${version}/Paseo-${version}-x64.tar.gz";
-    hash = "sha256-KB3wgAebAVj3elD17XphQzO8gTh4zQsdpObrtyR3YFk=";
+    hash = "sha256-HyoinWEhqCGr1l2aLVm8KBjv3a22FsjoXfT1+5zdcXk=";
   };
 
   nativeBuildInputs = [
