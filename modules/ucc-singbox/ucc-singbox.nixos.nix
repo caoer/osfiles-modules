@@ -59,34 +59,6 @@ let
   inst = cfg.instanceName;
   serviceName = "sing-box-ucc-${inst}";
 
-  # The egress guard (config below): the routed users, and the destinations
-  # they reach without the tun. Off on a root instance, whose TUN carries
-  # every user.
-  egressOn = cfg.egressGuard.enable && cfg.user != "root";
-  egressTable = "${serviceName}-egress-guard";
-  # By name: the table loads at runtime (its own unit, below), where names
-  # resolve, so an undeclared uid is fine.
-  egressUsers = lib.concatStringsSep ", " ([ cfg.user ] ++ cfg.extraUsers);
-  isV6 = lib.hasInfix ":";
-  egressV4 = [
-    "10.0.0.0/8"
-    "100.64.0.0/10"
-    "127.0.0.0/8"
-    "169.254.0.0/16"
-    "172.16.0.0/12"
-    "192.168.0.0/16"
-    "224.0.0.0/4"
-    "255.255.255.255"
-  ]
-  ++ lib.filter (a: !isV6 a) cfg.routeExcludeAddress;
-  egressV6 = [
-    "::1"
-    "fc00::/7"
-    "fe80::/10"
-    "ff00::/8"
-  ]
-  ++ lib.filter isV6 cfg.routeExcludeAddress;
-
   # The installed config, the raw API answer it was rendered from, and the
   # renderer that rendered it. Kept across reboots: a start whose fetch fails
   # runs on what is here.
@@ -645,22 +617,6 @@ in
       '';
     };
 
-    egressGuard.enable = lib.mkOption {
-      type = lib.types.bool;
-      default = false;
-      description = ''
-        Fail closed when the TUN is absent: a packet from `user` or
-        `extraUsers` to an outside address leaves by a tun, by loopback, as a
-        reply, to a private/link-local/multicast address or to
-        `routeExcludeAddress` — or is dropped (table inet <service>-egress-guard,
-        outside sing-box, so it holds while sing-box is stopped, restarting or
-        running without its tun). No route, outbound or exit changes. Off on a
-        root instance (its TUN carries every user). Loaded by the unit
-        <service>-egress-guard; rollback at runtime:
-        `systemctl stop <service>-egress-guard`.
-      '';
-    };
-
     instanceName = lib.mkOption {
       type = lib.types.str;
       default = "ucc";
@@ -839,70 +795,6 @@ in
       iifname "tun*" ip daddr 192.0.2.0/30 accept
       iifname "tun*" ip6 daddr fdfe:dcba:9876::/126 accept
     '';
-
-    # ── egress guard ──
-    # Every UCC exit and every Anthropic fail-closed rule lives inside the
-    # sing-box config, so while sing-box is stopped, restarting, or running
-    # without its tun (cos-stex-ucc-1 11-15: `active`, rule-set init hung, no
-    # tun), the routed users' traffic took the main table's default route
-    # from the host's own address. This table sits outside sing-box and
-    # holds whatever sing-box is doing. Keyed on the routed users (include_uid):
-    # nft sees a socket's uid, never its process path. What passes: any tun
-    # (this instance's tun is named by the kernel, the first free tunN —
-    # EasyTier may hold another; with the TUN up every outside flow of these
-    # users is routed into it or redirected onto sing-box's loopback
-    # listener), loopback, replies to connections someone else opened,
-    # private/link-local/multicast destinations, and routeExcludeAddress
-    # (left to the kernel by design: the fleet's own addresses, VM subnets,
-    # gateway LANs). Everything else from these users is dropped and counted;
-    # 6/min reach the journal with the uid.
-    #
-    # Loaded by its own oneshot, not declared in networking.nftables: the
-    # users match by name, which resolves on the host and not in the build
-    # sandbox that checks declared tables. nftables.service (tables mode)
-    # deletes and recreates only the tables it declares, so its reload and
-    # restart leave this one in place. The unit is separate from sing-box's,
-    # so turning the guard on or off never restarts sing-box.
-    #   read      nft list table inet ${egressTable}
-    #   rollback  systemctl stop ${egressTable}   (or nft delete table inet ${egressTable})
-    systemd.services.${egressTable} = lib.mkIf egressOn {
-      description = "Fail-closed egress for ${serviceName}'s routed users";
-      wantedBy = [ "multi-user.target" ];
-      after = [ "nftables.service" ];
-      before = [ "${serviceName}.service" ];
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        # One transaction: create-if-absent, delete, define. A rerun replaces
-        # the table atomically, with no moment without it.
-        ExecStart = "${pkgs.nftables}/bin/nft -f ${pkgs.writeText "${egressTable}.nft" ''
-          table inet ${egressTable}
-          delete table inet ${egressTable}
-          table inet ${egressTable} {
-            # auto-merge: the private ranges and routeExcludeAddress overlap.
-            set inside4 {
-              type ipv4_addr; flags interval; auto-merge;
-              elements = { ${lib.concatStringsSep ", " egressV4} }
-            }
-            set inside6 {
-              type ipv6_addr; flags interval; auto-merge;
-              elements = { ${lib.concatStringsSep ", " egressV6} }
-            }
-            chain output {
-              type filter hook output priority filter + 10; policy accept;
-              oifname "lo" accept
-              oifname "tun*" accept
-              ct direction reply accept
-              ip daddr @inside4 accept
-              ip6 daddr @inside6 accept
-              meta skuid { ${egressUsers} } limit rate 6/minute burst 6 packets log prefix "${egressTable} drop: " level warn flags skuid
-              meta skuid { ${egressUsers} } counter drop
-            }
-          }
-        ''}";
-        ExecStop = "${pkgs.nftables}/bin/nft delete table inet ${egressTable}";
-      };
-    };
 
     sops.secrets = {
       ${cfg.tokenSecret} = { };
