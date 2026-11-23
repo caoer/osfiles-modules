@@ -511,16 +511,17 @@ let
 
     ${pkgs.nftables}/bin/nft delete table inet ${guardTable} 2>/dev/null
 
-    for pid in /proc/[0-9]*; do
-      p=''${pid#/proc/}
-      cwd=$(${pkgs.coreutils}/bin/readlink "$pid/cwd" 2>/dev/null || true)
-      case "$cwd" in
-        */.local/ucc-sing-box|*/.local/ucc-sing-box/*)
+    # One find reads every /proc/<pid>/cwd link in-process; a readlink fork
+    # per process made this pass take minutes on a host with thousands.
+    ${pkgs.findutils}/bin/find /proc -mindepth 2 -maxdepth 2 \
+      -path '/proc/[0-9]*/cwd' \
+      \( -lname '*/.local/ucc-sing-box' -o -lname '*/.local/ucc-sing-box/*' \) \
+      -printf '%h %l\n' 2>/dev/null \
+      | while read -r pid cwd; do
+          p=''${pid#/proc/}
           echo "${serviceName}: stopping legacy installer pid=$p cwd=$cwd"
           ${pkgs.util-linux}/bin/kill "$p" 2>/dev/null
-          ;;
-      esac
-    done
+        done
     ${pkgs.coreutils}/bin/sleep 0.5
 
     for fam in -4 -6; do
