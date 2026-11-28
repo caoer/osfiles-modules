@@ -408,31 +408,96 @@ let
         for f in config.json raw.json render.id; do
           if [ -e "$state/$f" ]; then cp -p "$state/$f" "$work/prev/$f"; fi
         done
+
+        # Classify whether the rendered config diff is eligible for an in-place
+        # SIGHUP reload (only outbounds, endpoints, and/or route.rules changed)
+        # or requires a full systemctl restart.
+        apply_mode="restart"
+        apply_reason="no previous config or router not active"
+        reap_profiles=""
+        if [ -s "$work/prev/config.json" ] \
+          && ${pkgs.systemd}/bin/systemctl is-active --quiet ${serviceName}.service; then
+          if ${pkgs.jq}/bin/jq -n \
+            --slurpfile prev "$work/prev/config.json" \
+            --slurpfile next "$work/config.json" \
+            -f ${./hot-reload-classify.jq} > "$work/classify.json" 2>"$work/err"; then
+            apply_mode="$(${pkgs.jq}/bin/jq -r '.action // "restart"' "$work/classify.json")"
+            apply_reason="$(${pkgs.jq}/bin/jq -r '(.reasons // []) | join(",")' "$work/classify.json")"
+            reap_profiles="$(${pkgs.jq}/bin/jq -r '(.reap_profiles // [])[]' "$work/classify.json")"
+          else
+            say "hot-reload classifier failed ($(lastline)) — falling back to full restart"
+            apply_mode="restart"
+            apply_reason="classifier-error"
+          fi
+        fi
+
         install_candidate
         # The router's start takes the same lock.
         ${pkgs.util-linux}/bin/flock -u 9
-        say "config changed — restarting ${serviceName} (egress before: $before)"
-        if ${pkgs.systemd}/bin/systemctl restart ${serviceName}.service; then
-          # The tun takes a moment after the restart: up to 4 checks, 3 s
-          # apart. Anthropic reached ends the wait at once.
+
+        # The tun takes a moment after reload/restart: up to 4 checks.
+        # Anthropic reached ends the wait at once.
+        check_egress() {
+          first_sleep="$1"
           why="" after=""
-          for _ in 1 2 3 4; do
-            sleep 3
+          for i in 1 2 3 4; do
+            if [ "$i" -eq 1 ]; then sleep "$first_sleep"; else sleep 3; fi
             after="$(egress)"
             why="$(worse "$before" "$after")"
             case "$why" in "" | *anthropic*) break ;; esac
           done
-        else
-          after="restart failed"
-          why="${serviceName} failed to restart"
+        }
+
+        used_reload=0
+        if [ "$apply_mode" = "reload" ]; then
+          say "config changed (routes/outbounds only) — reloading ${serviceName} (egress before: $before)"
+          if ${pkgs.systemd}/bin/systemctl reload ${serviceName}.service; then
+            used_reload=1
+            check_egress 2
+          else
+            say "systemctl reload ${serviceName} failed — falling back to full restart"
+            apply_mode="restart"
+            apply_reason="reload-failed"
+          fi
         fi
+
+        if [ "$apply_mode" != "reload" ]; then
+          say "config changed (''${apply_reason:-structural}) — restarting ${serviceName} (egress before: $before)"
+          if ${pkgs.systemd}/bin/systemctl restart ${serviceName}.service; then
+            check_egress 3
+          else
+            after="restart failed"
+            why="${serviceName} failed to restart"
+          fi
+        fi
+
         if [ -z "$why" ]; then
+          if [ "$used_reload" = 1 ] && [ -n "$reap_profiles" ]; then
+            say "profile route removed/changed: $(printf '%s' "$reap_profiles" | tr '\n' ' ')"
+            ${lib.optionalString (cfg.onProfileRouteChange != [ ]) ''
+              while IFS= read -r slug; do
+                [ -n "$slug" ] || continue
+                ${lib.concatMapStrings (hook: ''
+                  say "running profile route-change hook ${hook} for $slug"
+                  ${hook} "$slug" >&2 || say "warning: ${hook} $slug exited non-zero"
+                '') cfg.onProfileRouteChange}
+              done <<EOF_REAP
+$reap_profiles
+EOF_REAP
+            ''}
+          fi
           rm -f "$state/rejected" "$state/rejected.why"
-          say "applied (egress after: $after)"
+          if [ "$used_reload" = 1 ]; then
+            say "applied (hot-reloaded; egress after: $after)"
+          else
+            say "applied (egress after: $after)"
+          fi
           report applied
           exit 0
         fi
-        say "egress worse after the restart: $why (before: $before, after: $after)"
+        op_kind="restart"
+        if [ "$used_reload" = 1 ]; then op_kind="reload"; fi
+        say "egress worse after the $op_kind: $why (before: $before, after: $after)"
         [ -s "$work/prev/config.json" ] \
           || fail "$why — no previous config to roll back to"
         ${pkgs.util-linux}/bin/flock 9
@@ -719,6 +784,18 @@ in
       '';
     };
 
+    onProfileRouteChange = lib.mkOption {
+      type = lib.types.listOf lib.types.path;
+      default = [ ];
+      description = ''
+        Executables invoked after an in-place hot-reload (`systemctl reload`)
+        when an existing profile route was removed or its outbound binding
+        changed. Called once per affected profile slug with the slug as `$1`.
+        Adding a brand-new profile route invokes no hooks. Non-zero exits are
+        logged and do not roll back the reload.
+      '';
+    };
+
     fleet = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -824,6 +901,13 @@ in
           "${configScript} start"
         ];
         ExecStart = "${singboxPkg}/bin/sing-box -D ${stateDir} run -c ${liveConfig}";
+        # In-place SIGHUP reload for route/outbound-only updates (keeps MainPID
+        # alive so ExecStopPost teardown/reapers do not fire); re-ensures the
+        # priority-5190 TUN subnet rules first.
+        ExecReload = [
+          "+${tunSubnetRule}"
+          "${pkgs.util-linux}/bin/kill -HUP $MAINPID"
+        ];
         # Unconditional teardown so crash residue cannot poison the next start.
         ExecStopPost = "+${tunCleanup}";
         # No CapabilityBoundingSet — process_path_regex routing needs broad
@@ -840,7 +924,7 @@ in
     # By hand: systemctl start <serviceName>-update. The fleet socket below
     # runs the same update on every pushed revision.
     systemd.services."${serviceName}-update" = {
-      description = "Refetch the UCC sing-box config for ${cfg.user}; restart ${serviceName} when it changed";
+      description = "Refetch the UCC sing-box config for ${cfg.user}; reload or restart ${serviceName} when it changed";
       after = [
         "network-online.target"
         "sops-nix.service"
