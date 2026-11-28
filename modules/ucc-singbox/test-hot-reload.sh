@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # modules/ucc-singbox/test-hot-reload.sh — automated verification suite for
-# sing-box-ucc-ucc SIGHUP hot-reload classification, targeted per-profile reap
-# hooks, restart fallback, rollback, and Claude 0-diff invariants.
+# sing-box-ucc-ucc SIGHUP hot-reload classification, decoupled startScript /
+# updateScript + zero-kill switch directives, real updateScript execution
+# (flock 9 ordering, pre+post reap ordering, journald SIGHUP confirmation,
+# restart fallback, rollback), and Claude 0-diff invariants.
 
 set -euo pipefail
 
@@ -37,21 +39,50 @@ assert_contains() {
     *) fail "$label: expected substring '$needle' in '$hay'" ;;
   esac
 }
+assert_not_contains() {
+  local hay="$1" needle="$2" label="$3"
+  case "$hay" in
+    *"$needle"*) fail "$label: unexpected substring '$needle'" ;;
+    *) ;;
+  esac
+}
+assert_line_order() {
+  local file="$1" first="$2" second="$3" label="$4"
+  local l1 l2
+  l1="$(grep -n -F "$first" "$file" | head -n 1 | cut -d: -f1 || true)"
+  l2="$(grep -n -F "$second" "$file" | head -n 1 | cut -d: -f1 || true)"
+  [ -n "$l1" ] || fail "$label: missing first event '$first' in $file"
+  [ -n "$l2" ] || fail "$label: missing second event '$second' in $file"
+  [ "$l1" -lt "$l2" ] || fail "$label: expected '$first' (line $l1) before '$second' (line $l2) in $file"
+}
 
-# ── G1: Static Nix parse + module wiring assertions ──────────────────────────
+# ── G1: Static Nix parse + decoupled script & zero-kill switch assertions ────
 if command -v nix-instantiate >/dev/null 2>&1; then
   nix-instantiate --parse "$MODULE_NIX" >/dev/null || fail "G1: nix-instantiate --parse failed"
   pass "G1a: nix-instantiate --parse ucc-singbox.nixos.nix clean"
 fi
 
 MODULE_SRC="$(cat "$MODULE_NIX")"
+assert_contains "$MODULE_SRC" 'restartIfChanged = false;' "G1b: restartIfChanged = false (P1-1)"
+assert_contains "$MODULE_SRC" 'stopIfChanged = false;' "G1b: stopIfChanged = false (P1-1)"
+assert_contains "$MODULE_SRC" 'startScript = pkgs.writeShellScript "${serviceName}-start"' "G1b: decoupled startScript"
+assert_contains "$MODULE_SRC" 'updateScript = pkgs.writeShellScript "${serviceName}-update"' "G1b: decoupled updateScript"
+assert_contains "$MODULE_SRC" '"${startScript}"' "G1b: ExecStartPre uses startScript"
+assert_contains "$MODULE_SRC" 'ExecStart = "${updateScript}";' "G1b: -update service uses updateScript"
+assert_contains "$MODULE_SRC" '${updateScript} "$res"' "G1b: fleetClient uses updateScript"
 assert_contains "$MODULE_SRC" 'ExecReload = [' "G1b: ExecReload configured"
 assert_contains "$MODULE_SRC" 'kill -HUP $MAINPID' "G1b: SIGHUP in ExecReload"
 assert_contains "$MODULE_SRC" 'hot-reload-classify.jq' "G1b: classifier referenced"
 assert_contains "$MODULE_SRC" 'onProfileRouteChange = lib.mkOption' "G1b: onProfileRouteChange option"
 assert_contains "$MODULE_SRC" 'ExecStopPost = "+${tunCleanup}";' "G1b: ExecStopPost intact"
-assert_contains "$MODULE_SRC" 'systemctl reload ${serviceName}.service' "G1b: systemctl reload wired"
-pass "G1b: ucc-singbox.nixos.nix static wiring assertions passed"
+assert_contains "$MODULE_SRC" 'confirm_reload' "G1b: journald reload confirmation present (P2-3)"
+
+# Verify startScript block itself NEVER references hot-reload-classify.jq or onProfileRouteChange.
+START_BLOCK="$(awk '/startScript = pkgs\.writeShellScript/,/updateScript = pkgs\.writeShellScript/' "$MODULE_NIX")"
+assert_not_contains "$START_BLOCK" 'hot-reload-classify.jq' "G1b: startScript must not reference hot-reload-classify.jq"
+assert_not_contains "$START_BLOCK" 'onProfileRouteChange' "G1b: startScript must not reference onProfileRouteChange"
+assert_not_contains "$START_BLOCK" 'systemctl' "G1b: startScript must not reference systemctl"
+pass "G1b: decoupled startScript/updateScript + restartIfChanged=false/stopIfChanged=false assertions passed"
 
 # ── Base fixture modeled on live devstation-lax-2 config.json ────────────────
 cat > "$WORK_DIR/base.json" <<'EOF'
@@ -66,7 +97,8 @@ cat > "$WORK_DIR/base.json" <<'EOF'
       "auto_redirect": false,
       "strict_route": false,
       "include_uid": [1000],
-      "route_exclude_address": ["10.0.0.0/8", "127.0.0.0/8"]
+      "route_exclude_address": ["10.0.0.0/8", "127.0.0.0/8"],
+      "exclude_interface": ["docker0"]
     }
   ],
   "outbounds": [
@@ -122,6 +154,15 @@ cat > "$WORK_DIR/base.json" <<'EOF'
         "rules": [
           { "process_path_regex": [".*"], "invert": true },
           { "domain_suffix": ["cloudcode-pa.googleapis.com", "oauth2.googleapis.com"] }
+        ],
+        "action": "reject"
+      },
+      {
+        "type": "logical",
+        "mode": "and",
+        "rules": [
+          { "process_path_regex": ["/\\.local/share/ucc/profiles/agy-[^/]+/"] },
+          { "ip_is_private": true, "invert": true }
         ],
         "action": "reject"
       },
@@ -232,6 +273,11 @@ assert_eq "$(jq -r '.action' <<< "$OUT")" "restart" "T7 action"
 assert_eq "$(jq -c '.reasons' <<< "$OUT")" '["inbounds"]' "T7 reasons"
 assert_eq "$(jq -c '.reap_profiles' <<< "$OUT")" '[]' "T7 reap_profiles"
 
+jq '.inbounds[0].mtu = 1400' "$WORK_DIR/base.json" > "$WORK_DIR/inbounds-mtu.json"
+OUT="$(classify "$WORK_DIR/base.json" "$WORK_DIR/inbounds-mtu.json")"
+assert_eq "$(jq -r '.action' <<< "$OUT")" "restart" "T7b mtu action"
+assert_eq "$(jq -c '.reasons' <<< "$OUT")" '["inbounds"]' "T7b mtu reasons"
+
 jq '.dns.servers += [{ "type": "https", "tag": "cf", "server": "1.1.1.1" }]' "$WORK_DIR/base.json" > "$WORK_DIR/dns.json"
 OUT="$(classify "$WORK_DIR/base.json" "$WORK_DIR/dns.json")"
 assert_eq "$(jq -r '.action' <<< "$OUT")" "restart" "T8 action"
@@ -256,7 +302,7 @@ jq '.ntp = { "enabled": true, "server": "time.apple.com" }' "$WORK_DIR/base.json
 OUT="$(classify "$WORK_DIR/base.json" "$WORK_DIR/ntp.json")"
 assert_eq "$(jq -r '.action' <<< "$OUT")" "restart" "T12 action"
 assert_eq "$(jq -c '.reasons' <<< "$OUT")" '["ntp"]' "T12 reasons"
-pass "T7-T12: structural changes (inbounds/dns/experimental/log/route.final/ntp) force restart"
+pass "T7-T12: structural changes (inbounds/mtu/dns/experimental/log/route.final/ntp) force restart"
 
 # ── T13: Regex safety + Claude 0-diff invariant ──────────────────────────────
 CLAUDE_BEFORE="$(jq -c '[.route.rules[] | select((.process_path_regex // []) | any(contains("crusted_standby_0n")))]' "$WORK_DIR/base.json")"
@@ -266,239 +312,400 @@ OUT_REMOVE="$(classify "$WORK_DIR/add.json" "$WORK_DIR/base.json")"
 case "$OUT_REMOVE" in
   *crusted_standby_0n*|*"[^"*) fail "T13: bogus or Claude slug leaked into reap_profiles: $OUT_REMOVE" ;;
 esac
-pass "T13: regex safety (oauth_hard_lock wildcard ignored) and Claude 0-diff verified"
+pass "T13: regex safety (oauth_hard_lock & unrouted_agy_egress wildcards ignored) and Claude 0-diff verified"
 
-# ── S1-S6: End-to-end configScript update harness with stubbed systemd/curl ──
-HARNESS="$WORK_DIR/run-update.sh"
-cat > "$HARNESS" <<EOF_HARNESS
+# ── T14 (P2-1): Escaped-dot profile slugs matched & unescaped; wildcards rejected ─
+jq '
+  .route.rules = .route.rules[0:9]
+    + [{ "action": "route", "outbound": "ucc-agy-exit-acct6", "process_path_regex": ["\\.local/share/ucc/profiles/agy-user\\.1/"] }]
+    + .route.rules[9:]
+' "$WORK_DIR/base.json" > "$WORK_DIR/dotted-add.json"
+jq '
+  (.route.rules[] | select((.process_path_regex // []) | index("\\.local/share/ucc/profiles/agy-user\\.1/"))).outbound = "ucc-agy-exit-caoer116"
+' "$WORK_DIR/dotted-add.json" > "$WORK_DIR/dotted-rebind.json"
+jq '
+  .route.rules = .route.rules[0:9]
+    + [{ "action": "route", "outbound": "ucc-agy-exit-acct6", "process_path_regex": ["\\.local/share/ucc/profiles/agy-wild.1/"] }]
+    + .route.rules[9:]
+' "$WORK_DIR/base.json" > "$WORK_DIR/wildcard-dot.json"
+
+OUT="$(classify "$WORK_DIR/dotted-add.json" "$WORK_DIR/base.json")"
+assert_eq "$(jq -r '.action' <<< "$OUT")" "reload" "T14a remove action"
+assert_eq "$(jq -c '.reap_profiles' <<< "$OUT")" '["agy-user.1"]' "T14a escaped-dot remove"
+
+OUT="$(classify "$WORK_DIR/dotted-add.json" "$WORK_DIR/dotted-rebind.json")"
+assert_eq "$(jq -r '.action' <<< "$OUT")" "reload" "T14b rebind action"
+assert_eq "$(jq -c '.reap_profiles' <<< "$OUT")" '["agy-user.1"]' "T14b escaped-dot rebind"
+
+OUT="$(classify "$WORK_DIR/wildcard-dot.json" "$WORK_DIR/base.json")"
+assert_eq "$(jq -c '.reap_profiles' <<< "$OUT")" '[]' "T14c unescaped wildcard dot rejected"
+pass "T14 (P2-1): escaped-dot slug extracted & unescaped (agy-user.1) while unescaped wildcard dot rejected"
+
+# ── T15 (P2-2): Ephemeral docker/br-/veth* churn reloads; static iface restarts ─
+jq '.inbounds[0].exclude_interface = ["docker0", "br-a1b2c3d4", "veth9f8e7d"]' "$WORK_DIR/base.json" > "$WORK_DIR/veth-churn.json"
+jq 'del(.inbounds[0].exclude_interface)' "$WORK_DIR/base.json" > "$WORK_DIR/veth-gone.json"
+jq '.inbounds[0].exclude_interface = ["docker0", "eth0"]' "$WORK_DIR/base.json" > "$WORK_DIR/static-iface.json"
+
+OUT="$(classify "$WORK_DIR/base.json" "$WORK_DIR/veth-churn.json")"
+assert_eq "$(jq -r '.action' <<< "$OUT")" "reload" "T15a veth add action"
+assert_eq "$(jq -c '.reasons' <<< "$OUT")" "[]" "T15a veth add reasons"
+
+OUT="$(classify "$WORK_DIR/veth-churn.json" "$WORK_DIR/veth-gone.json")"
+assert_eq "$(jq -r '.action' <<< "$OUT")" "reload" "T15b veth+docker remove action"
+assert_eq "$(jq -c '.reasons' <<< "$OUT")" "[]" "T15b veth+docker remove reasons"
+
+OUT="$(classify "$WORK_DIR/base.json" "$WORK_DIR/static-iface.json")"
+assert_eq "$(jq -r '.action' <<< "$OUT")" "restart" "T15c static iface action"
+assert_eq "$(jq -c '.reasons' <<< "$OUT")" '["inbounds"]' "T15c static iface reasons"
+pass "T15 (P2-2): ephemeral docker*/br-*/veth* churn reloads cleanly while static exclude_interface forces restart"
+
+# ── T16 (P2-3): Full rule binding + recursive nested logical rule inspection ──
+jq '
+  (.route.rules[] | select((.process_path_regex // []) | index("\\.local/share/ucc/profiles/agy-caoer116/"))).port = [443]
+' "$WORK_DIR/base.json" > "$WORK_DIR/pred-mutate.json"
+OUT="$(classify "$WORK_DIR/base.json" "$WORK_DIR/pred-mutate.json")"
+assert_eq "$(jq -r '.action' <<< "$OUT")" "reload" "T16a pred action"
+assert_eq "$(jq -c '.reap_profiles' <<< "$OUT")" '["agy-caoer116"]' "T16a route predicate change triggers reap"
+
+jq '
+  .route.rules = [
+    {
+      "type": "logical",
+      "mode": "and",
+      "rules": [
+        {
+          "type": "logical",
+          "mode": "or",
+          "rules": [
+            { "process_path_regex": ["\\.local/share/ucc/profiles/agy-izume/"] }
+          ]
+        },
+        { "ip_cidr": ["198.51.100.0/24"] }
+      ],
+      "action": "reject"
+    }
+  ] + .route.rules
+' "$WORK_DIR/base.json" > "$WORK_DIR/nested-logical-1.json"
+jq '.route.rules[0].rules[1].ip_cidr = ["203.0.113.0/24"]' "$WORK_DIR/nested-logical-1.json" > "$WORK_DIR/nested-logical-2.json"
+
+OUT="$(classify "$WORK_DIR/nested-logical-1.json" "$WORK_DIR/nested-logical-2.json")"
+assert_eq "$(jq -r '.action' <<< "$OUT")" "reload" "T16b nested logical action"
+assert_eq "$(jq -c '.reap_profiles' <<< "$OUT")" '["agy-izume"]' "T16b nested logical guard change triggers reap"
+pass "T16 (P2-3): full rule predicate change and depth-2 nested logical rule change trigger targeted reap"
+
+# ── Extract REAL updateScript body from ucc-singbox.nixos.nix ────────────────
+UPDATE_BODY="$WORK_DIR/update-body.sh"
+sed -n '/# BEGIN UCC_SINGBOX_UPDATE_SCRIPT/,/# END UCC_SINGBOX_UPDATE_SCRIPT/p' "$MODULE_NIX" \
+  | sed "s/''\\\${/\${/g" > "$UPDATE_BODY"
+[ -s "$UPDATE_BODY" ] || fail "Could not extract UCC_SINGBOX_UPDATE_SCRIPT from $MODULE_NIX"
+bash -n "$UPDATE_BODY" || fail "Extracted updateScript body failed bash -n syntax check"
+pass "G1c: extracted REAL updateScript body from ucc-singbox.nixos.nix passes bash -n"
+
+# Build thin wrapper that binds ONLY the Nix store-path / option variables and
+# sources the VERBATIM extracted updateScript body (with real flock, jq, cmp,
+# hot-reload-classify.jq).
+REAL_UPDATE_RUNNER="$WORK_DIR/run-real-update.sh"
+cat > "$REAL_UPDATE_RUNNER" <<EOF_WRAPPER
 #!/usr/bin/env bash
 set -eu
-mode="update"
-result="\$1"
+umask 077
 state="\$TEST_STATE"
-stamp="renderer-v1"
-say() { echo "sing-box-ucc-ucc: \$*" >&2; }
-report() { if [ -n "\$result" ]; then printf '%s\n' "\$*" > "\$result"; fi; }
-fail() { say "\$*"; report "failed \$*"; exit 1; }
+renderer="\$TEST_RENDER_BIN"
+fetch_bin="\$TEST_FETCH_BIN"
+service_name="sing-box-ucc-ucc"
+routed_user="\$(id -un)"
+classify_jq="$CLASSIFY_JQ"
+flock_bin="\$(command -v flock)"
+cmp_bin="\$(command -v cmp)"
+jq_bin="\$(command -v jq)"
+systemctl_bin="\$TEST_SYSTEMCTL"
+journalctl_bin="\$TEST_JOURNALCTL"
+setpriv_bin="\$TEST_SETPRIV"
+id_bin="\$(command -v id)"
+curl_bin="\$TEST_CURL"
+date_bin="\$(command -v date)"
+awk_bin="\$(command -v awk)"
+grep_bin="\$(command -v grep)"
+sleep_bin="\$TEST_SLEEP"
+reload_confirm_ticks="\${TEST_RELOAD_TICKS:-3}"
+reload_poll_interval="0"
+egress_reload_sleep="0"
+egress_restart_sleep="0"
+egress_retry_sleep="0"
+reap_hooks=("\$TEST_REAP_HOOK")
+source "$UPDATE_BODY"
+EOF_WRAPPER
+chmod +x "$REAL_UPDATE_RUNNER"
 
-mkdir -p -m 0700 "\$state"
-work="\$(mktemp -d "\$state/.next.XXXXXX")"
-trap 'rm -rf "\$work"' EXIT
-
-fetch() { cp "\$TEST_NEXT_RAW" "\$work/raw.json"; }
-render() { cp "\$TEST_NEXT_CFG" "\$work/config.json"; }
-install_candidate() {
-  printf '%s\n' "\$stamp" > "\$work/render.id"
-  mv -f "\$work/config.json" "\$state/config.json"
-  mv -f "\$work/raw.json" "\$state/raw.json"
-  mv -f "\$work/render.id" "\$state/render.id"
-}
-same_renderer() { [ "\$(cat "\$state/render.id" 2>/dev/null || true)" = "\$stamp" ]; }
-egress() {
-  "\$TEST_EGRESS_BIN"
-}
-worse() {
-  set -- \$1 \$2
-  w=""
-  if [ "\${1:-}" = active ] && [ "\${4:-}" != active ]; then w="router \${4:-?}"; fi
-  if [ "\${2:-}" = 204 ] && [ "\${5:-}" != 204 ]; then w="\${w:+\$w, }google \${5:-?}"; fi
-  if [ "\${3:-}" = 000 ] && [ "\${6:-}" != 000 ]; then w="\${w:+\$w, }anthropic reached (\${6:-?})"; fi
-  printf '%s' "\$w"
-}
-
-fetch || fail "fetch failed"
-if [ -s "\$state/config.json" ] && same_renderer && cmp -s "\$work/raw.json" "\$state/raw.json"; then
-  report unchanged
-  exit 0
+# Check whether $dir/state/.lock is currently held by another process (i.e. updateScript).
+LOCK_PROBE="$WORK_DIR/check-lock.sh"
+cat > "$LOCK_PROBE" <<'EOF_LOCK'
+#!/usr/bin/env bash
+if flock -n "$1" true 2>/dev/null; then
+  echo "UNLOCKED"
+else
+  echo "LOCKED"
 fi
-candidate="\$({ sha256sum < "\$work/raw.json"; printf '%s\n' "\$stamp"; } | sha256sum | cut -c1-64)"
-if [ "\$(cat "\$state/rejected" 2>/dev/null || true)" = "\$candidate" ]; then
-  fail "already rejected"
-fi
-render || fail "render failed"
-before="\$(egress)"
-mkdir "\$work/prev"
-for f in config.json raw.json render.id; do
-  if [ -e "\$state/\$f" ]; then cp -p "\$state/\$f" "\$work/prev/\$f"; fi
-done
+EOF_LOCK
+chmod +x "$LOCK_PROBE"
 
-apply_mode="restart"
-apply_reason="no previous config or router not active"
-reap_profiles=""
-if [ -s "\$work/prev/config.json" ] && "\$TEST_SYSTEMCTL" is-active --quiet sing-box-ucc-ucc.service; then
-  if jq -n --slurpfile prev "\$work/prev/config.json" --slurpfile next "\$work/config.json" -f "$CLASSIFY_JQ" > "\$work/classify.json"; then
-    apply_mode="\$(jq -r '.action // "restart"' "\$work/classify.json")"
-    apply_reason="\$(jq -r '(.reasons // []) | join(",")' "\$work/classify.json")"
-    reap_profiles="\$(jq -r '(.reap_profiles // [])[]' "\$work/classify.json")"
-  else
-    apply_mode="restart"
-    apply_reason="classifier-error"
-  fi
-fi
-
-install_candidate
-
-check_egress() {
-  why="" after=""
-  for i in 1 2 3 4; do
-    after="\$(egress)"
-    why="\$(worse "\$before" "\$after")"
-    case "\$why" in "" | *anthropic*) break ;; esac
-  done
-}
-
-used_reload=0
-if [ "\$apply_mode" = "reload" ]; then
-  if "\$TEST_SYSTEMCTL" reload sing-box-ucc-ucc.service; then
-    used_reload=1
-    check_egress
-  else
-    apply_mode="restart"
-    apply_reason="reload-failed"
-  fi
-fi
-
-if [ "\$apply_mode" != "reload" ]; then
-  if "\$TEST_SYSTEMCTL" restart sing-box-ucc-ucc.service; then
-    check_egress
-  else
-    after="restart failed"
-    why="sing-box-ucc-ucc failed to restart"
-  fi
-fi
-
-if [ -z "\$why" ]; then
-  if [ "\$used_reload" = 1 ] && [ -n "\$reap_profiles" ]; then
-    while IFS= read -r slug; do
-      [ -n "\$slug" ] || continue
-      "\$TEST_REAP_HOOK" "\$slug" || true
-    done <<EOF_REAP
-\$reap_profiles
-EOF_REAP
-  fi
-  rm -f "\$state/rejected" "\$state/rejected.why"
-  report applied
-  exit 0
-fi
-
-mv -f "\$work/prev/config.json" "\$state/config.json"
-if [ -e "\$work/prev/raw.json" ]; then mv -f "\$work/prev/raw.json" "\$state/raw.json"; fi
-printf '%s\n' "\$stamp" > "\$state/render.id"
-printf '%s\n' "\$candidate" > "\$state/rejected"
-printf '%s\n' "\$why" > "\$state/rejected.why"
-"\$TEST_SYSTEMCTL" restart sing-box-ucc-ucc.service || fail "rollback restart failed"
-fail "\$why — rolled back"
-EOF_HARNESS
-chmod +x "$HARNESS"
-
-setup_case() {
-  local name="$1" prev_cfg="$2" next_cfg="$3" is_active="$4" reload_rc="$5" egress_after="$6"
+setup_real_case() {
+  local name="$1" prev_cfg="$2" next_cfg="$3" is_active="$4" reload_rc="$5" journal_mode="$6" reap_rc="$7" egress_after="$8"
   local dir="$WORK_DIR/case-$name"
   mkdir -p "$dir/state"
   cp "$prev_cfg" "$dir/state/config.json"
   printf 'raw-prev-%s\n' "$name" > "$dir/state/raw.json"
-  printf 'renderer-v1\n' > "$dir/state/render.id"
   printf 'raw-next-%s\n' "$name" > "$dir/next.raw"
   cp "$next_cfg" "$dir/next.cfg"
+  : > "$dir/events.log"
   : > "$dir/systemctl.log"
   : > "$dir/reap.log"
-  printf '0\n' > "$dir/egress.count"
+  printf '0\n' > "$dir/curl.count"
+
+  cat > "$dir/fetch" <<EOF_F
+#!/usr/bin/env bash
+cp "$dir/next.raw" "\$1"
+EOF_F
+  chmod +x "$dir/fetch"
+
+  cat > "$dir/render" <<EOF_R
+#!/usr/bin/env bash
+cp "$dir/next.cfg" "\$2"
+EOF_R
+  chmod +x "$dir/render"
+
+  # Set render.id to the exact renderer path so same_renderer() matches before change
+  printf '%s\n' "$dir/render" > "$dir/state/render.id"
+
+  # Keep a live dummy process so confirm_reload's `kill -0 "$pid"` sees a real PID.
+  sleep 300 &
+  local dummy_pid=$!
+  printf '%d\n' "$dummy_pid" > "$dir/dummy.pid"
 
   cat > "$dir/systemctl" <<EOF_SC
 #!/usr/bin/env bash
+lock_state="\$("$LOCK_PROBE" "$dir/state/.lock")"
 echo "\$*" >> "$dir/systemctl.log"
 case "\$1" in
-  is-active) exit $is_active ;;
-  reload) exit $reload_rc ;;
-  restart) exit 0 ;;
+  is-active)
+    if [ "\${2:-}" = "--quiet" ]; then
+      exit $is_active
+    else
+      if [ "$is_active" -eq 0 ]; then echo "active"; else echo "inactive"; fi
+      exit $is_active
+    fi
+    ;;
+  show)
+    cat "$dir/dummy.pid"
+    ;;
+  reload)
+    echo "systemctl:reload:lock=\$lock_state" >> "$dir/events.log"
+    exit $reload_rc
+    ;;
+  restart)
+    echo "systemctl:restart:lock=\$lock_state" >> "$dir/events.log"
+    exit 0
+    ;;
 esac
 EOF_SC
   chmod +x "$dir/systemctl"
 
-  cat > "$dir/egress" <<EOF_EG
+  cat > "$dir/journalctl" <<EOF_JC
 #!/usr/bin/env bash
-c="\$(cat "$dir/egress.count")"
+case "\$*" in
+  *--show-cursor*)
+    echo "-- cursor: s=testcursor;i=1"
+    exit 0
+    ;;
+esac
+lock_state="\$("$LOCK_PROBE" "$dir/state/.lock")"
+echo "journalctl:confirm:lock=\$lock_state" >> "$dir/events.log"
+case "$journal_mode" in
+  started)
+    echo "INFO[0000] sing-box started (0.25s)"
+    ;;
+  error)
+    echo "ERROR[0000] reload service: decode config: invalid test json"
+    ;;
+  timeout)
+    ;;
+esac
+EOF_JC
+  chmod +x "$dir/journalctl"
+
+  cat > "$dir/setpriv" <<'EOF_SP'
+#!/usr/bin/env bash
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--" ]; then shift; break; fi
+  shift
+done
+exec "$@"
+EOF_SP
+  chmod +x "$dir/setpriv"
+
+  # curl is invoked twice per egress() call: google then anthropic.
+  # Calls 1-2 = before (204, 000); calls 3+ = after (from $egress_after: "<state> <g> <a>").
+  local after_google after_anthro
+  after_google="$(awk '{print $2}' <<< "$egress_after")"
+  after_anthro="$(awk '{print $3}' <<< "$egress_after")"
+  cat > "$dir/curl" <<EOF_CURL
+#!/usr/bin/env bash
+c="\$(cat "$dir/curl.count")"
 c=\$((c + 1))
-printf '%s\n' "\$c" > "$dir/egress.count"
-if [ "\$c" -eq 1 ]; then
-  echo "active 204 000"
+printf '%s\n' "\$c" > "$dir/curl.count"
+lock_state="\$("$LOCK_PROBE" "$dir/state/.lock")"
+if [ "\$c" -le 2 ]; then
+  if [ "\$c" -eq 1 ]; then
+    echo "egress:before:lock=\$lock_state" >> "$dir/events.log"
+    printf '204'
+  else
+    printf '000'
+  fi
 else
-  echo "$egress_after"
+  if [ "\$((c % 2))" -eq 1 ]; then
+    echo "egress:after:lock=\$lock_state" >> "$dir/events.log"
+    printf '%s' "$after_google"
+  else
+    printf '%s' "$after_anthro"
+  fi
 fi
-EOF_EG
-  chmod +x "$dir/egress"
+EOF_CURL
+  chmod +x "$dir/curl"
+
+  cat > "$dir/sleep" <<'EOF_SL'
+#!/usr/bin/env bash
+exit 0
+EOF_SL
+  chmod +x "$dir/sleep"
 
   cat > "$dir/reap" <<EOF_RP
 #!/usr/bin/env bash
+lock_state="\$("$LOCK_PROBE" "$dir/state/.lock")"
 echo "\$1" >> "$dir/reap.log"
+echo "reap:\$1:lock=\$lock_state" >> "$dir/events.log"
+exit $reap_rc
 EOF_RP
   chmod +x "$dir/reap"
 
   TEST_STATE="$dir/state" \
-  TEST_NEXT_RAW="$dir/next.raw" \
-  TEST_NEXT_CFG="$dir/next.cfg" \
+  TEST_FETCH_BIN="$dir/fetch" \
+  TEST_RENDER_BIN="$dir/render" \
   TEST_SYSTEMCTL="$dir/systemctl" \
-  TEST_EGRESS_BIN="$dir/egress" \
+  TEST_JOURNALCTL="$dir/journalctl" \
+  TEST_SETPRIV="$dir/setpriv" \
+  TEST_CURL="$dir/curl" \
+  TEST_SLEEP="$dir/sleep" \
   TEST_REAP_HOOK="$dir/reap" \
-  "$HARNESS" "$dir/result" 2>"$dir/stderr.log" || true
+  "$REAL_UPDATE_RUNNER" "$dir/result" 2>"$dir/stderr.log" || true
+
+  kill "$dummy_pid" 2>/dev/null || true
+  wait "$dummy_pid" 2>/dev/null || true
 }
 
-# S1: Route add -> reload, 0 restarts, 0 reaps
-setup_case s1 "$WORK_DIR/base.json" "$WORK_DIR/add.json" 0 0 "active 204 000"
+# S1: Route add -> reload + confirm_reload, flock held, 0 restarts, 0 reaps
+setup_real_case s1 "$WORK_DIR/base.json" "$WORK_DIR/add.json" 0 0 started 0 "active 204 000"
 assert_eq "$(cat "$WORK_DIR/case-s1/result")" "applied" "S1 result"
-assert_contains "$(cat "$WORK_DIR/case-s1/systemctl.log")" "reload sing-box-ucc-ucc.service" "S1 reload"
+assert_contains "$(cat "$WORK_DIR/case-s1/events.log")" "systemctl:reload:lock=LOCKED" "S1 reload under flock 9"
+assert_contains "$(cat "$WORK_DIR/case-s1/events.log")" "journalctl:confirm:lock=LOCKED" "S1 confirm under flock 9"
+assert_contains "$(cat "$WORK_DIR/case-s1/events.log")" "egress:after:lock=LOCKED" "S1 egress under flock 9"
 if grep -q "restart" "$WORK_DIR/case-s1/systemctl.log"; then fail "S1 unexpectedly restarted"; fi
 assert_eq "$(wc -l < "$WORK_DIR/case-s1/reap.log" | tr -d ' ')" "0" "S1 reap count"
-pass "S1: route add -> systemctl reload, 0 restarts, 0 reaps"
+pass "S1 (real updateScript): route add -> reload + confirm_reload under flock 9, 0 restarts, 0 reaps"
 
-# S2: Route remove -> reload, targeted reap only
-setup_case s2 "$WORK_DIR/add.json" "$WORK_DIR/base.json" 0 0 "active 204 000"
+# S2 (P1-2): Route remove -> pre-reload reap -> reload -> confirm -> post-reload reap -> egress (all under flock 9!)
+setup_real_case s2 "$WORK_DIR/add.json" "$WORK_DIR/base.json" 0 0 started 0 "active 204 000"
 assert_eq "$(cat "$WORK_DIR/case-s2/result")" "applied" "S2 result"
-assert_contains "$(cat "$WORK_DIR/case-s2/systemctl.log")" "reload sing-box-ucc-ucc.service" "S2 reload"
 if grep -q "restart" "$WORK_DIR/case-s2/systemctl.log"; then fail "S2 unexpectedly restarted"; fi
-assert_eq "$(cat "$WORK_DIR/case-s2/reap.log")" "agy-hotreload-test" "S2 reap target"
-pass "S2: route remove -> systemctl reload + targeted reap of agy-hotreload-test only"
+assert_eq "$(wc -l < "$WORK_DIR/case-s2/reap.log" | tr -d ' ')" "2" "S2 pre+post reap passes (2 calls)"
+assert_eq "$(sort -u "$WORK_DIR/case-s2/reap.log")" "agy-hotreload-test" "S2 reap target"
+assert_line_order "$WORK_DIR/case-s2/events.log" "reap:agy-hotreload-test:lock=LOCKED" "systemctl:reload:lock=LOCKED" "S2 pre-reload reap precedes reload"
+assert_line_order "$WORK_DIR/case-s2/events.log" "systemctl:reload:lock=LOCKED" "journalctl:confirm:lock=LOCKED" "S2 reload precedes confirm"
+# Verify second reap call happens strictly AFTER confirm and strictly BEFORE egress:after
+REAP2_LINE="$(grep -n -F "reap:agy-hotreload-test:lock=LOCKED" "$WORK_DIR/case-s2/events.log" | tail -n 1 | cut -d: -f1)"
+CONFIRM_LINE="$(grep -n -F "journalctl:confirm:lock=LOCKED" "$WORK_DIR/case-s2/events.log" | head -n 1 | cut -d: -f1)"
+EGRESS_AFTER_LINE="$(grep -n -F "egress:after:lock=LOCKED" "$WORK_DIR/case-s2/events.log" | head -n 1 | cut -d: -f1)"
+[ "$CONFIRM_LINE" -lt "$REAP2_LINE" ] && [ "$REAP2_LINE" -lt "$EGRESS_AFTER_LINE" ] \
+  || fail "S2 post-reload reap (line $REAP2_LINE) must sit between confirm ($CONFIRM_LINE) and egress:after ($EGRESS_AFTER_LINE)"
+pass "S2 (real updateScript, P1-2): pre-reap -> reload -> confirm -> post-reap -> egress all under flock 9"
 
-# S3: Inbound change -> full restart
-setup_case s3 "$WORK_DIR/base.json" "$WORK_DIR/inbounds.json" 0 0 "active 204 000"
+# S3: Structural inbound TUN change -> releases flock 9 -> full systemctl restart
+setup_real_case s3 "$WORK_DIR/base.json" "$WORK_DIR/inbounds.json" 0 0 started 0 "active 204 000"
 assert_eq "$(cat "$WORK_DIR/case-s3/result")" "applied" "S3 result"
-assert_contains "$(cat "$WORK_DIR/case-s3/systemctl.log")" "restart sing-box-ucc-ucc.service" "S3 restart"
+assert_contains "$(cat "$WORK_DIR/case-s3/events.log")" "systemctl:restart:lock=UNLOCKED" "S3 restart releases flock 9"
 if grep -q "reload" "$WORK_DIR/case-s3/systemctl.log"; then fail "S3 unexpectedly reloaded"; fi
-pass "S3: inbound change -> full systemctl restart"
+pass "S3 (real updateScript): structural inbound change -> releases flock 9 + deliberate systemctl restart"
 
-# S4: Reload fails -> fallback to full restart
-setup_case s4 "$WORK_DIR/base.json" "$WORK_DIR/add.json" 0 1 "active 204 000"
+# S4: systemctl reload fails -> releases flock 9 -> fallback full restart
+setup_real_case s4 "$WORK_DIR/base.json" "$WORK_DIR/add.json" 0 1 started 0 "active 204 000"
 assert_eq "$(cat "$WORK_DIR/case-s4/result")" "applied" "S4 result"
-assert_contains "$(cat "$WORK_DIR/case-s4/systemctl.log")" "reload sing-box-ucc-ucc.service" "S4 attempted reload"
-assert_contains "$(cat "$WORK_DIR/case-s4/systemctl.log")" "restart sing-box-ucc-ucc.service" "S4 fallback restart"
-pass "S4: systemctl reload failure -> falls back to full systemctl restart"
+assert_contains "$(cat "$WORK_DIR/case-s4/events.log")" "systemctl:reload:lock=LOCKED" "S4 attempted reload under lock"
+assert_contains "$(cat "$WORK_DIR/case-s4/events.log")" "systemctl:restart:lock=UNLOCKED" "S4 fallback restart unlocked"
+pass "S4 (real updateScript): systemctl reload failure -> releases flock 9 + fallback restart"
 
-# S5: Egress degrades after reload -> rollback + full restart + rejected stamp
-setup_case s5 "$WORK_DIR/base.json" "$WORK_DIR/add.json" 0 0 "active 000 000"
+# S5: Egress degrades after reload -> rollback + restart unlocked + rejected stamp
+setup_real_case s5 "$WORK_DIR/base.json" "$WORK_DIR/add.json" 0 0 started 0 "active 000 000"
 assert_contains "$(cat "$WORK_DIR/case-s5/result")" "rolled back" "S5 rollback result"
-assert_contains "$(cat "$WORK_DIR/case-s5/systemctl.log")" "reload sing-box-ucc-ucc.service" "S5 reload first"
-assert_contains "$(cat "$WORK_DIR/case-s5/systemctl.log")" "restart sing-box-ucc-ucc.service" "S5 rollback restart"
+assert_contains "$(cat "$WORK_DIR/case-s5/events.log")" "systemctl:reload:lock=LOCKED" "S5 reload first"
+assert_contains "$(cat "$WORK_DIR/case-s5/events.log")" "systemctl:restart:lock=UNLOCKED" "S5 rollback restart unlocked"
 cmp -s "$WORK_DIR/base.json" "$WORK_DIR/case-s5/state/config.json" || fail "S5 config not restored"
 [ -s "$WORK_DIR/case-s5/state/rejected" ] || fail "S5 rejected stamp missing"
-assert_eq "$(wc -l < "$WORK_DIR/case-s5/reap.log" | tr -d ' ')" "0" "S5 no targeted reap on rollback"
-pass "S5: post-reload egress degradation -> restores prev config + full restart + rejected"
+pass "S5 (real updateScript): post-reload egress degradation -> restores prev config + rollback restart + rejected"
 
-# S6: Service inactive -> direct full restart
-setup_case s6 "$WORK_DIR/base.json" "$WORK_DIR/add.json" 3 0 "active 204 000"
+# S6: Service inactive -> direct full restart (unlocked)
+setup_real_case s6 "$WORK_DIR/base.json" "$WORK_DIR/add.json" 3 0 started 0 "active 204 000"
 assert_eq "$(cat "$WORK_DIR/case-s6/result")" "applied" "S6 result"
-assert_contains "$(cat "$WORK_DIR/case-s6/systemctl.log")" "restart sing-box-ucc-ucc.service" "S6 restart"
+assert_contains "$(cat "$WORK_DIR/case-s6/events.log")" "systemctl:restart:lock=UNLOCKED" "S6 restart unlocked"
 if grep -q "reload" "$WORK_DIR/case-s6/systemctl.log"; then fail "S6 unexpectedly reloaded while inactive"; fi
-pass "S6: inactive service -> direct full systemctl restart"
+pass "S6 (real updateScript): inactive service -> direct full systemctl restart"
 
-# ── G4: Claude 0-diff repo check ─────────────────────────────────────────────
-if git -C "$REPO_ROOT" rev-parse --verify origin/main >/dev/null 2>&1; then
+# S7 (P1-2): Pre-reload reap hook exits non-zero -> skips reload, falls back to full restart
+setup_real_case s7 "$WORK_DIR/add.json" "$WORK_DIR/base.json" 0 0 started 1 "active 204 000"
+assert_eq "$(cat "$WORK_DIR/case-s7/result")" "applied" "S7 result"
+if grep -q "reload" "$WORK_DIR/case-s7/systemctl.log"; then fail "S7 should not reload when pre-reload reap failed"; fi
+assert_contains "$(cat "$WORK_DIR/case-s7/events.log")" "reap:agy-hotreload-test:lock=LOCKED" "S7 pre-reload reap ran"
+assert_contains "$(cat "$WORK_DIR/case-s7/events.log")" "systemctl:restart:lock=UNLOCKED" "S7 fell back to restart"
+assert_contains "$(cat "$WORK_DIR/case-s7/stderr.log")" "pre-reload reap hook failed" "S7 logged pre-reload reap failure"
+pass "S7 (real updateScript, P1-2): failed pre-reload reap -> skips reload + falls back to full restart"
+
+# S8 (P2-3): Async SIGHUP exits 0, journald logs `reload service:` error -> fallback restart
+setup_real_case s8 "$WORK_DIR/base.json" "$WORK_DIR/add.json" 0 0 error 0 "active 204 000"
+assert_eq "$(cat "$WORK_DIR/case-s8/result")" "applied" "S8 result"
+assert_contains "$(cat "$WORK_DIR/case-s8/events.log")" "systemctl:reload:lock=LOCKED" "S8 reload ran"
+assert_contains "$(cat "$WORK_DIR/case-s8/events.log")" "systemctl:restart:lock=UNLOCKED" "S8 fell back to restart"
+assert_contains "$(cat "$WORK_DIR/case-s8/stderr.log")" "sing-box rejected SIGHUP reload" "S8 detected reload service error"
+pass "S8 (real updateScript, P2-3): journald 'reload service:' error -> falls back to full restart"
+
+# S9 (P2-3): Async SIGHUP exits 0, journald never logs `sing-box started` -> timeout fallback restart
+setup_real_case s9 "$WORK_DIR/base.json" "$WORK_DIR/add.json" 0 0 timeout 0 "active 204 000"
+assert_eq "$(cat "$WORK_DIR/case-s9/result")" "applied" "S9 result"
+assert_contains "$(cat "$WORK_DIR/case-s9/events.log")" "systemctl:restart:lock=UNLOCKED" "S9 timeout fell back to restart"
+assert_contains "$(cat "$WORK_DIR/case-s9/stderr.log")" "timed out waiting for sing-box started" "S9 logged timeout"
+pass "S9 (real updateScript, P2-3): missing 'sing-box started' confirmation -> timeout fallback to full restart"
+
+# S10 (P2-2): Ephemeral veth* churn + route add -> real updateScript reloads (0 restarts)
+jq '
+  .inbounds[0].exclude_interface = ["docker0", "br-112233", "veth445566"]
+' "$WORK_DIR/add.json" > "$WORK_DIR/add-with-veth.json"
+setup_real_case s10 "$WORK_DIR/base.json" "$WORK_DIR/add-with-veth.json" 0 0 started 0 "active 204 000"
+assert_eq "$(cat "$WORK_DIR/case-s10/result")" "applied" "S10 result"
+assert_contains "$(cat "$WORK_DIR/case-s10/events.log")" "systemctl:reload:lock=LOCKED" "S10 reloaded despite veth churn"
+if grep -q "restart" "$WORK_DIR/case-s10/systemctl.log"; then fail "S10 unexpectedly restarted on veth churn"; fi
+pass "S10 (real updateScript, P2-2): ephemeral veth* churn + route add -> hot-reload (0 restarts)"
+
+# ── G4: Claude 0-diff repo check (works on feature branch AND merged main) ───
+if git -C "$REPO_ROOT" rev-parse --verify HEAD >/dev/null 2>&1; then
+  DIFF_BASE="origin/main"
+  if ! git -C "$REPO_ROOT" rev-parse --verify origin/main >/dev/null 2>&1 \
+     || [ "$(git -C "$REPO_ROOT" rev-parse HEAD)" = "$(git -C "$REPO_ROOT" rev-parse origin/main)" ]; then
+    DIFF_BASE="HEAD~1"
+  fi
   CLAUDE_DIFF="$(
-    git -C "$REPO_ROOT" diff origin/main...HEAD -- modules/ucc-singbox/anthropic-failclosed.jq modules/ucc-singbox/failclosed-hold.jq
+    git -C "$REPO_ROOT" diff "${DIFF_BASE}...HEAD" -- modules/ucc-singbox/anthropic-failclosed.jq modules/ucc-singbox/failclosed-hold.jq
     git -C "$REPO_ROOT" diff -- modules/ucc-singbox/anthropic-failclosed.jq modules/ucc-singbox/failclosed-hold.jq
     git -C "$REPO_ROOT" diff --cached -- modules/ucc-singbox/anthropic-failclosed.jq modules/ucc-singbox/failclosed-hold.jq
   )"
-  [ -z "$CLAUDE_DIFF" ] || fail "G4: unexpected diff in anthropic-failclosed.jq / failclosed-hold.jq"
-  pass "G4: zero diffs on anthropic-failclosed.jq and failclosed-hold.jq"
+  [ -z "$CLAUDE_DIFF" ] || fail "G4: unexpected diff in anthropic-failclosed.jq / failclosed-hold.jq (base=$DIFF_BASE)"
+  pass "G4: zero diffs on anthropic-failclosed.jq and failclosed-hold.jq (base=$DIFF_BASE)"
 fi
 
 printf '\nALL HOT-RELOAD CHECKS PASSED (%d checks)\n' "$PASS_COUNT"
