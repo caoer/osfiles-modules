@@ -20,9 +20,39 @@
 | if ($p | type) != "object" or ($n | type) != "object" then
     { action: "restart", reasons: ["invalid-config"], reap_profiles: [] }
   else
+    # Exempt ephemeral container/veth interface churn in TUN exclude_interface
+    # (docker*, br-*, veth*) from forcing systemctl restart since SIGHUP
+    # recreates inbound/tun cleanly, while keeping static exclude_interface
+    # entries and all other inbound fields (address, mtu, stack, include_uid,
+    # route_exclude_address, added/removed inbounds) strictly structural.
+    def normalize_tun_inbound:
+      if type == "object" and .type == "tun" then
+        (
+          (.exclude_interface // [])
+          | if type == "array" then
+              map(select((type == "string" and test("^(docker[0-9]*|br-|veth)")) | not))
+              | sort
+            else
+              .
+            end
+        ) as $static_ex
+        | if ($static_ex | type) == "array" then
+            if ($static_ex | length) > 0 then
+              .exclude_interface = $static_ex
+            else
+              del(.exclude_interface)
+            end
+          else
+            .
+          end
+      else
+        .
+      end;
+
     def structural:
       del(.outbounds, .endpoints)
-      | if (.route | type) == "object" then .route |= del(.rules) else . end;
+      | if (.route | type) == "object" then .route |= del(.rules) else . end
+      | if (.inbounds | type) == "array" then .inbounds |= map(normalize_tun_inbound) else . end;
 
     def structural_diff_reasons($a; $b):
       ($a | structural) as $sa
@@ -77,26 +107,48 @@
       and (.domain_suffix == null)
       and (.process_path_regex != [".*"]);
 
-    # Strict concrete profile slug extractor: excludes wildcard regex patterns
-    # such as `/\.local/share/ucc/profiles/[^/]+/libexec/(antigravity|agy)$`
-    # and generic `/\.local/share/ucc/profiles/` catch-alls.
+    # Strict concrete profile slug extractor: matches literal profile slugs and
+    # regex-escaped dots (`\.`), unescaping `\.` -> `.`, while excluding
+    # unescaped wildcard `.`, character classes (`[^/]+`), and generic
+    # `/\.local/share/ucc/profiles/` catch-alls.
     def regex_profile_slugs:
       [
         .[]
         | select(type == "string")
-        | scan("/ucc/profiles/([A-Za-z0-9][A-Za-z0-9._-]*)/")
+        | scan("/ucc/profiles/([A-Za-z0-9](?:[A-Za-z0-9_-]|\\\\\\.)*)/")
         | .[0]
+        | gsub("\\\\\\."; ".")
       ]
       | unique;
 
     def rule_profile_slugs:
-      if is_profile_route then
+      if type != "object" then
+        []
+      elif (.process_path_regex | type) == "array" then
         (.process_path_regex | regex_profile_slugs)
       elif .type == "logical" and (.rules | type) == "array" then
-        [ .rules[] | select((.process_path_regex | type) == "array") | .process_path_regex | regex_profile_slugs[] ]
+        [ .rules[] | rule_profile_slugs[] ]
         | unique
       else
         []
+      end;
+
+    def normalize_rule:
+      if type == "object" then
+        with_entries(
+          . as $e
+          | .value = (
+              if $e.key == "process_path_regex" and ($e.value | type) == "array" then
+                ($e.value | sort)
+              else
+                ($e.value | normalize_rule)
+              end
+            )
+        )
+      elif type == "array" then
+        map(normalize_rule)
+      else
+        .
       end;
 
     def profile_bindings:
@@ -111,9 +163,9 @@
             | {
                 slug: $slug,
                 binding: {
+                  rule: ($r | normalize_rule),
                   outbound: ($r.outbound // null),
-                  chain: resolve_chain($idx; ($r.outbound // null); []),
-                  process_path_regex: ($r.process_path_regex | sort)
+                  chain: resolve_chain($idx; ($r.outbound // null); [])
                 }
               }
           ]
@@ -124,10 +176,10 @@
       | (
           [
             $rules[]
-            | select((is_profile_route | not) and .type == "logical")
+            | select(is_profile_route | not)
             | . as $r
             | ($r | rule_profile_slugs)[] as $slug
-            | { slug: $slug, guard: $r }
+            | { slug: $slug, guard: ($r | normalize_rule) }
           ]
           | group_by(.slug)
           | map({ key: .[0].slug, value: (map(.guard) | sort) })

@@ -256,47 +256,36 @@ let
     echo "${serviceName}: rendered — $profiles profile route(s), uid=$target_uid${lib.optionalString isStrict ", strict mode (lan-proxy → ${cfg.lanProxy.server}:${toString cfg.lanProxy.port})"}"
   '';
 
-  # --- Config: `start` (the main unit's ExecStartPre) and `update [result]` ---
+  # --- Start & Update scripts (decoupled so update/classifier/hook edits never
+  #     mutate ExecStartPre of the main sing-box service unit) ---
   #
-  # start  — on the first start after boot (or with nothing stored) fetch and
-  #          render; a failed fetch renders the stored fetch, a failed render
-  #          keeps the stored config. A later start renders only when the
-  #          renderer changed (a rebuild), from the stored fetch, offline.
-  # update — fetch; when the raw answer equals the stored one and the renderer
-  #          is the same, report `unchanged` and touch nothing. Otherwise
-  #          render, `sing-box check`, install, restart the router, report
-  #          `applied`. Any failure reports `failed <one line>`, exits non-zero
-  #          and leaves the installed config as it was.
-  #
-  #          The restart is judged by the egress check (`egress`) run before
-  #          the install and after the restart: the router active, the routed
-  #          user's google generate_204 answered 204, the routed user's
-  #          Anthropic refused (000; a flow no registry row claims never
-  #          reaches it from this host). A failed restart, or any of the three
-  #          that held before and not after, puts the previous config, raw and
-  #          renderer stamp back, restarts the router on them and reports
-  #          `failed … rolled back`. That candidate (raw + renderer) is kept in
-  #          `rejected`: the same revision sent again — at every reconnect —
-  #          is refused without a restart until the raw or the renderer
-  #          changes.
-  #
-  # The compare is raw fetch to raw fetch, so what the renderer and the
-  # postFetch hooks add (this boot's addresses, a host's rewrite) never reads
-  # as a change. The result word goes to the file named by $2 (the fleet
-  # socket's answer).
-  configScript = pkgs.writeShellScript "${serviceName}-config" ''
+  # startScript  — the main unit's ExecStartPre. On the first start after boot
+  #                (or with nothing stored) fetch and render; a failed fetch
+  #                renders the stored fetch, a failed render keeps the stored
+  #                config. A later start renders only when the renderer changed
+  #                (a rebuild), from the stored fetch, offline. References ONLY
+  #                fetchScript and renderScript (never hot-reload-classify.jq
+  #                or onProfileRouteChange).
+  # updateScript — invoked by <serviceName>-update.service and fleetClient.
+  #                Fetches raw config; when unchanged and same renderer, exits
+  #                `unchanged`. Otherwise renders, checks, classifies via
+  #                hot-reload-classify.jq, installs, and either hot-reloads in
+  #                place (pre-reload reap -> SIGHUP -> journald confirm ->
+  #                post-reload reap -> egress check, all under flock 9) or
+  #                releases flock 9 and runs a deliberate systemctl restart.
+  #                Any failure or egress regression rolls back under flock 9,
+  #                records `rejected`, restarts the router on the previous
+  #                config, reports `failed … rolled back`, and exits non-zero.
+  startScript = pkgs.writeShellScript "${serviceName}-start" ''
     set -eu
     umask 077
-    mode="''${1:?usage: start | update [result-file]}"
-    result="''${2:-}"
     state=${stateDir}
     renderer=${renderScript}
     # What rendered the installed config; a rebuild that changes it re-renders.
     stamp="$renderer"
 
     say() { echo "${serviceName}: $*" >&2; }
-    report() { if [ -n "$result" ]; then printf '%s\n' "$*" > "$result"; fi; }
-    fail() { say "$*"; report "failed $*"; exit 1; }
+    fail() { say "$*"; exit 1; }
 
     mkdir -p -m 0700 "$state"
     exec 9>"$state/.lock"
@@ -304,10 +293,125 @@ let
     work="$(mktemp -d "$state/.next.XXXXXX")"
     trap 'rm -rf "$work"' EXIT
 
+    fetch() {
+      if ${fetchScript} "$work/raw.json" 2>"$work/err"; then
+        cat "$work/err" >&2
+      else
+        cat "$work/err" >&2
+        return 1
+      fi
+    }
+    render() {
+      if "$renderer" "$work/raw.json" "$work/config.json" >&2 2>"$work/err"; then
+        cat "$work/err" >&2
+      else
+        cat "$work/err" >&2
+        return 1
+      fi
+    }
+    lastline() { tail -n 1 "$work/err" | tr -d '\r'; }
+    install_candidate() {
+      printf '%s\n' "$stamp" > "$work/render.id"
+      mv -f "$work/config.json" "$state/config.json"
+      mv -f "$work/raw.json" "$state/raw.json"
+      mv -f "$work/render.id" "$state/render.id"
+    }
+    same_renderer() { [ "$(cat "$state/render.id" 2>/dev/null || true)" = "$stamp" ]; }
+
+    boot="$(cat /proc/sys/kernel/random/boot_id)"
+    have_raw=0
+    why="fetch failed"
+    if [ -s "$state/raw.json" ] && [ -s "$state/config.json" ] \
+      && [ "$(cat "$state/boot_id" 2>/dev/null || true)" = "$boot" ]; then
+      if ! same_renderer; then
+        cp "$state/raw.json" "$work/raw.json"
+        have_raw=1
+      fi
+      why="fetched earlier this boot"
+    elif fetch; then
+      have_raw=1
+    elif [ -s "$state/raw.json" ]; then
+      say "fetch failed — rendering the stored fetch"
+      cp "$state/raw.json" "$work/raw.json"
+      have_raw=1
+    fi
+    if [ "$have_raw" = 1 ]; then
+      if render; then
+        install_candidate
+      elif [ -s "$state/config.json" ]; then
+        say "render failed ($(lastline)) — starting on the stored config"
+      else
+        fail "render failed and no config is stored: $(lastline)"
+      fi
+    elif [ -s "$state/config.json" ]; then
+      say "$why — starting on the stored config"
+    else
+      fail "fetch failed and no config is stored: $(lastline)"
+    fi
+    printf '%s\n' "$boot" > "$state/boot_id"
+    say "starting on $(sha256sum "$state/config.json" | cut -c1-12)"
+  '';
+
+  updateScript = pkgs.writeShellScript "${serviceName}-update" ''
+    set -eu
+    umask 077
+    state=${stateDir}
+    renderer=${renderScript}
+    fetch_bin=${fetchScript}
+    service_name=${serviceName}
+    routed_user=${lib.escapeShellArg cfg.user}
+    classify_jq=${./hot-reload-classify.jq}
+    flock_bin=${pkgs.util-linux}/bin/flock
+    cmp_bin=${pkgs.diffutils}/bin/cmp
+    jq_bin=${pkgs.jq}/bin/jq
+    systemctl_bin=${pkgs.systemd}/bin/systemctl
+    journalctl_bin=${pkgs.systemd}/bin/journalctl
+    setpriv_bin=${pkgs.util-linux}/bin/setpriv
+    id_bin=${pkgs.coreutils}/bin/id
+    curl_bin=${pkgs.curl}/bin/curl
+    date_bin=${pkgs.coreutils}/bin/date
+    awk_bin=${pkgs.gawk}/bin/awk
+    grep_bin=${pkgs.gnugrep}/bin/grep
+    sleep_bin=${pkgs.coreutils}/bin/sleep
+    reload_confirm_ticks=30
+    reload_poll_interval=0.1
+    egress_reload_sleep=2
+    egress_restart_sleep=3
+    egress_retry_sleep=3
+    reap_hooks=(${lib.concatMapStringsSep " " lib.escapeShellArg cfg.onProfileRouteChange})
+    # BEGIN UCC_SINGBOX_UPDATE_SCRIPT
+    if [ "''${1:-}" = "update" ]; then shift; fi
+    result="''${1:-}"
+    # What rendered the installed config; a rebuild that changes it re-renders.
+    stamp="$renderer"
+
+    say() { echo "''${service_name}: $*" >&2; }
+    report() { if [ -n "$result" ]; then printf '%s\n' "$*" > "$result"; fi; }
+    fail() { say "$*"; report "failed $*"; exit 1; }
+
+    mkdir -p -m 0700 "$state"
+    exec 9>"$state/.lock"
+    lock_held=0
+    acquire_lock() {
+      if [ "$lock_held" = 0 ]; then
+        "$flock_bin" 9
+        lock_held=1
+      fi
+    }
+    release_lock() {
+      if [ "$lock_held" = 1 ]; then
+        "$flock_bin" -u 9
+        lock_held=0
+      fi
+    }
+    acquire_lock
+    work="$(mktemp -d "$state/.next.XXXXXX")"
+    trap 'rm -rf "$work"' EXIT
+
     # Each step runs as its own script (set -e holds inside it); its stderr
     # reaches the journal, and its last line is the failure's one line.
     fetch() {
-      if ${fetchScript} "$work/raw.json" 2>"$work/err"; then
+      if "$fetch_bin" "$work/raw.json" 2>"$work/err"; then
         cat "$work/err" >&2
       else
         cat "$work/err" >&2
@@ -337,11 +441,11 @@ let
     # two codes from the routed user's own curl (its traffic is on the tun).
     egress() {
       as_user() {
-        ${pkgs.util-linux}/bin/setpriv --reuid=${cfg.user} --regid="$(${pkgs.coreutils}/bin/id -g ${cfg.user})" --init-groups -- \
-          ${pkgs.curl}/bin/curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$1" || true
+        "$setpriv_bin" --reuid="$routed_user" --regid="$("$id_bin" -g "$routed_user")" --init-groups -- \
+          "$curl_bin" -s -o /dev/null -w '%{http_code}' --max-time 5 "$1" || true
       }
       printf '%s %s %s\n' \
-        "$(${pkgs.systemd}/bin/systemctl is-active ${serviceName}.service || true)" \
+        "$("$systemctl_bin" is-active "''${service_name}.service" || true)" \
         "$(as_user https://www.google.com/generate_204)" \
         "$(as_user https://api.anthropic.com/)"
     }
@@ -355,168 +459,208 @@ let
       printf '%s' "$w"
     }
 
-    case "$mode" in
-      start)
-        boot="$(cat /proc/sys/kernel/random/boot_id)"
-        have_raw=0
-        why="fetch failed"
-        if [ -s "$state/raw.json" ] && [ -s "$state/config.json" ] \
-          && [ "$(cat "$state/boot_id" 2>/dev/null || true)" = "$boot" ]; then
-          if ! same_renderer; then
-            cp "$state/raw.json" "$work/raw.json"
-            have_raw=1
+    run_reap_hooks() {
+      phase="$1"
+      [ -n "$reap_profiles" ] || return 0
+      [ "''${#reap_hooks[@]}" -gt 0 ] || return 0
+      reap_rc=0
+      while IFS= read -r slug; do
+        [ -n "$slug" ] || continue
+        for hook in "''${reap_hooks[@]}"; do
+          say "running profile route-change hook $hook [$phase] for $slug"
+          if ! "$hook" "$slug" >&2; then
+            say "error: $hook [$phase] $slug exited non-zero"
+            reap_rc=1
           fi
-          why="fetched earlier this boot"
-        elif fetch; then
-          have_raw=1
-        elif [ -s "$state/raw.json" ]; then
-          say "fetch failed — rendering the stored fetch"
-          cp "$state/raw.json" "$work/raw.json"
-          have_raw=1
-        fi
-        if [ "$have_raw" = 1 ]; then
-          if render; then
-            install_candidate
-          elif [ -s "$state/config.json" ]; then
-            say "render failed ($(lastline)) — starting on the stored config"
-          else
-            fail "render failed and no config is stored: $(lastline)"
-          fi
-        elif [ -s "$state/config.json" ]; then
-          say "$why — starting on the stored config"
-        else
-          fail "fetch failed and no config is stored: $(lastline)"
-        fi
-        printf '%s\n' "$boot" > "$state/boot_id"
-        say "starting on $(sha256sum "$state/config.json" | cut -c1-12)"
-        ;;
-      update)
-        fetch || fail "fetch: $(lastline)"
-        if [ -s "$state/config.json" ] && same_renderer \
-          && ${pkgs.diffutils}/bin/cmp -s "$work/raw.json" "$state/raw.json"; then
-          say "config unchanged"
-          report unchanged
-          exit 0
-        fi
-        candidate="$({ sha256sum < "$work/raw.json"; printf '%s\n' "$stamp"; } | sha256sum | cut -c1-64)"
-        if [ "$(cat "$state/rejected" 2>/dev/null || true)" = "$candidate" ]; then
-          fail "this raw was rolled back here before ($(cat "$state/rejected.why" 2>/dev/null || true)) — not applied again"
-        fi
-        render || fail "render: $(lastline)"
-        before="$(egress)"
-        mkdir "$work/prev"
-        for f in config.json raw.json render.id; do
-          if [ -e "$state/$f" ]; then cp -p "$state/$f" "$work/prev/$f"; fi
         done
+      done < <(printf '%s\n' "$reap_profiles")
+      return "$reap_rc"
+    }
 
-        # Classify whether the rendered config diff is eligible for an in-place
-        # SIGHUP reload (only outbounds, endpoints, and/or route.rules changed)
-        # or requires a full systemctl restart.
+    # Confirm that sing-box actually applied the SIGHUP reload (async Type=simple
+    # ExecReload exits 0 on signal delivery even if sing-box's internal check()
+    # rejects the config and keeps the old Box alive).
+    confirm_reload() {
+      pid="$1"
+      cursor="$2"
+      since="$3"
+      case "$pid" in
+        ""|*[!0-9]*|0)
+          say "reload confirmation failed: invalid MainPID ($pid)"
+          return 1
+          ;;
+      esac
+      tick=0
+      while [ "$tick" -lt "$reload_confirm_ticks" ]; do
+        if [ -n "$cursor" ]; then
+          jout="$("$journalctl_bin" -u "''${service_name}.service" --after-cursor="$cursor" "_PID=$pid" --no-pager -o cat 2>/dev/null || true)"
+        else
+          jout="$("$journalctl_bin" -u "''${service_name}.service" --since="$since" "_PID=$pid" --no-pager -o cat 2>/dev/null || true)"
+        fi
+        if printf '%s\n' "$jout" | "$grep_bin" -Fq "reload service:"; then
+          err_line="$(printf '%s\n' "$jout" | "$grep_bin" -F "reload service:" | tail -n 1)"
+          say "sing-box rejected SIGHUP reload: $err_line"
+          return 1
+        fi
+        if printf '%s\n' "$jout" | "$grep_bin" -Fq "sing-box started"; then
+          if kill -0 "$pid" 2>/dev/null; then
+            return 0
+          fi
+          say "sing-box MainPID=$pid exited right after reload"
+          return 1
+        fi
+        if ! kill -0 "$pid" 2>/dev/null; then
+          say "sing-box MainPID=$pid exited during reload"
+          return 1
+        fi
+        "$sleep_bin" "$reload_poll_interval"
+        tick=$((tick + 1))
+      done
+      say "timed out waiting for sing-box started after SIGHUP (MainPID=$pid)"
+      return 1
+    }
+
+    fetch || fail "fetch: $(lastline)"
+    if [ -s "$state/config.json" ] && same_renderer \
+      && "$cmp_bin" -s "$work/raw.json" "$state/raw.json"; then
+      say "config unchanged"
+      report unchanged
+      exit 0
+    fi
+    candidate="$({ sha256sum < "$work/raw.json"; printf '%s\n' "$stamp"; } | sha256sum | cut -c1-64)"
+    if [ "$(cat "$state/rejected" 2>/dev/null || true)" = "$candidate" ]; then
+      fail "this raw was rolled back here before ($(cat "$state/rejected.why" 2>/dev/null || true)) — not applied again"
+    fi
+    render || fail "render: $(lastline)"
+    before="$(egress)"
+    mkdir "$work/prev"
+    for f in config.json raw.json render.id; do
+      if [ -e "$state/$f" ]; then cp -p "$state/$f" "$work/prev/$f"; fi
+    done
+
+    # Classify whether the rendered config diff is eligible for an in-place
+    # SIGHUP reload (only outbounds, endpoints, route.rules, and/or ephemeral
+    # TUN exclude_interface churn changed) or requires a full systemctl restart.
+    apply_mode="restart"
+    apply_reason="no previous config or router not active"
+    reap_profiles=""
+    if [ -s "$work/prev/config.json" ] \
+      && "$systemctl_bin" is-active --quiet "''${service_name}.service"; then
+      if "$jq_bin" -n \
+        --slurpfile prev "$work/prev/config.json" \
+        --slurpfile next "$work/config.json" \
+        -f "$classify_jq" > "$work/classify.json" 2>"$work/err"; then
+        apply_mode="$("$jq_bin" -r '.action // "restart"' "$work/classify.json")"
+        apply_reason="$("$jq_bin" -r '(.reasons // []) | join(",")' "$work/classify.json")"
+        reap_profiles="$("$jq_bin" -r '(.reap_profiles // [])[]' "$work/classify.json")"
+      else
+        say "hot-reload classifier failed ($(lastline)) — falling back to full restart"
         apply_mode="restart"
-        apply_reason="no previous config or router not active"
-        reap_profiles=""
-        if [ -s "$work/prev/config.json" ] \
-          && ${pkgs.systemd}/bin/systemctl is-active --quiet ${serviceName}.service; then
-          if ${pkgs.jq}/bin/jq -n \
-            --slurpfile prev "$work/prev/config.json" \
-            --slurpfile next "$work/config.json" \
-            -f ${./hot-reload-classify.jq} > "$work/classify.json" 2>"$work/err"; then
-            apply_mode="$(${pkgs.jq}/bin/jq -r '.action // "restart"' "$work/classify.json")"
-            apply_reason="$(${pkgs.jq}/bin/jq -r '(.reasons // []) | join(",")' "$work/classify.json")"
-            reap_profiles="$(${pkgs.jq}/bin/jq -r '(.reap_profiles // [])[]' "$work/classify.json")"
-          else
-            say "hot-reload classifier failed ($(lastline)) — falling back to full restart"
-            apply_mode="restart"
-            apply_reason="classifier-error"
+        apply_reason="classifier-error"
+      fi
+    fi
+
+    install_candidate
+
+    # The tun takes a moment after reload/restart: up to 4 checks.
+    # Anthropic reached ends the wait at once.
+    check_egress() {
+      first_sleep="$1"
+      why="" after=""
+      for i in 1 2 3 4; do
+        if [ "$i" -eq 1 ]; then "$sleep_bin" "$first_sleep"; else "$sleep_bin" "$egress_retry_sleep"; fi
+        after="$(egress)"
+        why="$(worse "$before" "$after")"
+        case "$why" in "" | *anthropic*) break ;; esac
+      done
+    }
+
+    # Hold flock 9 across pre-reload reap, systemctl reload, journald confirm,
+    # post-reload reap, and check_egress so concurrent update/fleet invocations
+    # cannot send overlapping SIGHUPs or race rollback. Release flock 9 ONLY
+    # immediately before any systemctl restart (whose ExecStartPre takes it).
+    used_reload=0
+    if [ "$apply_mode" = "reload" ] && [ -n "$reap_profiles" ]; then
+      say "profile route removed/changed: $(printf '%s' "$reap_profiles" | tr '\n' ' ') — running pre-reload reap"
+      if ! run_reap_hooks "pre-reload"; then
+        say "pre-reload reap hook failed — falling back to full restart"
+        apply_mode="restart"
+        apply_reason="pre-reload-reap-failed"
+      fi
+    fi
+
+    if [ "$apply_mode" = "reload" ]; then
+      main_pid="$("$systemctl_bin" show -p MainPID --value "''${service_name}.service" 2>/dev/null || echo 0)"
+      reload_cursor="$("$journalctl_bin" -u "''${service_name}.service" -n 0 --show-cursor --no-pager 2>/dev/null \
+        | "$awk_bin" '/^-- cursor: / { sub(/^-- cursor: /, ""); print; exit }' || true)"
+      reload_since="$("$date_bin" '+@%s' 2>/dev/null || true)"
+      say "config changed (routes/outbounds only) — reloading ''${service_name} (MainPID=$main_pid, egress before: $before)"
+      if "$systemctl_bin" reload "''${service_name}.service"; then
+        if confirm_reload "$main_pid" "$reload_cursor" "$reload_since"; then
+          used_reload=1
+          if [ -n "$reap_profiles" ]; then
+            if ! run_reap_hooks "post-reload"; then
+              say "post-reload reap hook failed — falling back to full restart"
+              used_reload=0
+              apply_mode="restart"
+              apply_reason="post-reload-reap-failed"
+            fi
           fi
-        fi
-
-        install_candidate
-        # The router's start takes the same lock.
-        ${pkgs.util-linux}/bin/flock -u 9
-
-        # The tun takes a moment after reload/restart: up to 4 checks.
-        # Anthropic reached ends the wait at once.
-        check_egress() {
-          first_sleep="$1"
-          why="" after=""
-          for i in 1 2 3 4; do
-            if [ "$i" -eq 1 ]; then sleep "$first_sleep"; else sleep 3; fi
-            after="$(egress)"
-            why="$(worse "$before" "$after")"
-            case "$why" in "" | *anthropic*) break ;; esac
-          done
-        }
-
-        used_reload=0
-        if [ "$apply_mode" = "reload" ]; then
-          say "config changed (routes/outbounds only) — reloading ${serviceName} (egress before: $before)"
-          if ${pkgs.systemd}/bin/systemctl reload ${serviceName}.service; then
-            used_reload=1
-            check_egress 2
-          else
-            say "systemctl reload ${serviceName} failed — falling back to full restart"
-            apply_mode="restart"
-            apply_reason="reload-failed"
-          fi
-        fi
-
-        if [ "$apply_mode" != "reload" ]; then
-          say "config changed (''${apply_reason:-structural}) — restarting ${serviceName} (egress before: $before)"
-          if ${pkgs.systemd}/bin/systemctl restart ${serviceName}.service; then
-            check_egress 3
-          else
-            after="restart failed"
-            why="${serviceName} failed to restart"
-          fi
-        fi
-
-        if [ -z "$why" ]; then
-          if [ "$used_reload" = 1 ] && [ -n "$reap_profiles" ]; then
-            say "profile route removed/changed: $(printf '%s' "$reap_profiles" | tr '\n' ' ')"
-            ${lib.optionalString (cfg.onProfileRouteChange != [ ]) ''
-              while IFS= read -r slug; do
-                [ -n "$slug" ] || continue
-                ${lib.concatMapStrings (hook: ''
-                  say "running profile route-change hook ${hook} for $slug"
-                  ${hook} "$slug" >&2 || say "warning: ${hook} $slug exited non-zero"
-                '') cfg.onProfileRouteChange}
-              done <<EOF_REAP
-$reap_profiles
-EOF_REAP
-            ''}
-          fi
-          rm -f "$state/rejected" "$state/rejected.why"
           if [ "$used_reload" = 1 ]; then
-            say "applied (hot-reloaded; egress after: $after)"
-          else
-            say "applied (egress after: $after)"
+            check_egress "$egress_reload_sleep"
           fi
-          report applied
-          exit 0
+        else
+          say "SIGHUP reload confirmation failed — falling back to full restart"
+          apply_mode="restart"
+          apply_reason="reload-unconfirmed"
         fi
-        op_kind="restart"
-        if [ "$used_reload" = 1 ]; then op_kind="reload"; fi
-        say "egress worse after the $op_kind: $why (before: $before, after: $after)"
-        [ -s "$work/prev/config.json" ] \
-          || fail "$why — no previous config to roll back to"
-        ${pkgs.util-linux}/bin/flock 9
-        mv -f "$work/prev/config.json" "$state/config.json"
-        if [ -e "$work/prev/raw.json" ]; then mv -f "$work/prev/raw.json" "$state/raw.json"; fi
-        # The current stamp, so the router's start keeps the restored config
-        # instead of re-rendering the restored raw.
-        printf '%s\n' "$stamp" > "$state/render.id"
-        printf '%s\n' "$candidate" > "$state/rejected"
-        printf '%s\n' "$why" > "$state/rejected.why"
-        ${pkgs.util-linux}/bin/flock -u 9
-        ${pkgs.systemd}/bin/systemctl restart ${serviceName}.service \
-          || fail "$why — rolled back, but ${serviceName} failed to restart"
-        fail "$why — rolled back to $(sha256sum "$state/config.json" | cut -c1-12)"
-        ;;
-      *)
-        fail "unknown mode $mode"
-        ;;
-    esac
+      else
+        say "systemctl reload ''${service_name} failed — falling back to full restart"
+        apply_mode="restart"
+        apply_reason="reload-failed"
+      fi
+    fi
+
+    if [ "$apply_mode" != "reload" ]; then
+      say "config changed (''${apply_reason:-structural}) — restarting ''${service_name} (egress before: $before)"
+      # The router's ExecStartPre (startScript) takes the same lock.
+      release_lock
+      if "$systemctl_bin" restart "''${service_name}.service"; then
+        check_egress "$egress_restart_sleep"
+      else
+        after="restart failed"
+        why="''${service_name} failed to restart"
+      fi
+    fi
+
+    if [ -z "$why" ]; then
+      rm -f "$state/rejected" "$state/rejected.why"
+      if [ "$used_reload" = 1 ]; then
+        say "applied (hot-reloaded; egress after: $after)"
+      else
+        say "applied (egress after: $after)"
+      fi
+      report applied
+      exit 0
+    fi
+    op_kind="restart"
+    if [ "$used_reload" = 1 ]; then op_kind="reload"; fi
+    say "egress worse after the $op_kind: $why (before: $before, after: $after)"
+    [ -s "$work/prev/config.json" ] \
+      || fail "$why — no previous config to roll back to"
+    acquire_lock
+    mv -f "$work/prev/config.json" "$state/config.json"
+    if [ -e "$work/prev/raw.json" ]; then mv -f "$work/prev/raw.json" "$state/raw.json"; fi
+    # The current stamp, so the router's start keeps the restored config
+    # instead of re-rendering the restored raw.
+    printf '%s\n' "$stamp" > "$state/render.id"
+    printf '%s\n' "$candidate" > "$state/rejected"
+    printf '%s\n' "$why" > "$state/rejected.why"
+    release_lock
+    "$systemctl_bin" restart "''${service_name}.service" \
+      || fail "$why — rolled back, but ''${service_name} failed to restart"
+    fail "$why — rolled back to $(sha256sum "$state/config.json" | cut -c1-12)"
+    # END UCC_SINGBOX_UPDATE_SCRIPT
   '';
 
   # --- Fleet socket client (plan § 3.4), run by websocat on the socket ---
@@ -542,7 +686,7 @@ EOF_REAP
         continue
       fi
       : > "$res"
-      ${configScript} update "$res" >&2 || true
+      ${updateScript} "$res" >&2 || true
       read -r word detail < "$res" || word=""
       case "$word" in
         applied | unchanged)
@@ -788,11 +932,11 @@ in
       type = lib.types.listOf lib.types.path;
       default = [ ];
       description = ''
-        Executables invoked after an in-place hot-reload (`systemctl reload`)
-        when an existing profile route was removed or its outbound binding
-        changed. Called once per affected profile slug with the slug as `$1`.
-        Adding a brand-new profile route invokes no hooks. Non-zero exits are
-        logged and do not roll back the reload.
+        Executables invoked before AND immediately after an in-place hot-reload
+        (`systemctl reload`) when an existing profile route is removed or its
+        binding/guards change. Called once per affected profile slug with the
+        slug as `$1`. Adding a brand-new profile route invokes no hooks. A
+        non-zero exit falls back to a full `systemctl restart`.
       '';
     };
 
@@ -890,15 +1034,23 @@ in
         "sops-nix.service"
       ];
       wantedBy = [ "multi-user.target" ];
+      # Never stop or restart the live sing-box router during nixos-rebuild switch:
+      # stopping it runs ExecStopPost (tearing down tun1 and firing full-desk PID
+      # reapers). Emits X-RestartIfChanged=false and X-StopIfChanged=false so
+      # switch-to-configuration updates the unit via daemon-reload while keeping
+      # MainPID alive; sing-box-ucc-ucc-fleet/update apply config/renderer diffs
+      # via hot-reload or deliberate restart.
+      restartIfChanged = false;
+      stopIfChanged = false;
 
       serviceConfig = {
         # Order: clear residue / kill legacy installer, the tun subnet rules,
-        # then the config (fetched on the first start after boot, else the
-        # stored one).
+        # then the start-only config script (decoupled from update/classifier/
+        # onProfileRouteChange so update edits never mutate ExecStartPre).
         ExecStartPre = [
           "+${tunCleanup}"
           "+${tunSubnetRule}"
-          "${configScript} start"
+          "${startScript}"
         ];
         ExecStart = "${singboxPkg}/bin/sing-box -D ${stateDir} run -c ${liveConfig}";
         # In-place SIGHUP reload for route/outbound-only updates (keeps MainPID
@@ -932,7 +1084,7 @@ in
       wants = [ "network-online.target" ];
       serviceConfig = {
         Type = "oneshot";
-        ExecStart = "${configScript} update";
+        ExecStart = "${updateScript}";
       };
     };
 
